@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -461,9 +462,11 @@ private fun WarningBanner(
           modifier = Modifier.weight(1f),
         )
       }
+      // Buttons use the banner's own content color: primary (teal) on red fails contrast.
+      val buttonColors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer)
       Row(Modifier.align(Alignment.End)) {
-        if (actionLabel != null) TextButton(onClick = onAction) { Text(actionLabel) }
-        TextButton(onClick = onDismiss) { Text("Dismiss") }
+        if (actionLabel != null) TextButton(onClick = onAction, colors = buttonColors) { Text(actionLabel) }
+        TextButton(onClick = onDismiss, colors = buttonColors) { Text("Dismiss") }
       }
     }
   }

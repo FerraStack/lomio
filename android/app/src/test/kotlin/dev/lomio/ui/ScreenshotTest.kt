@@ -274,6 +274,7 @@ class ScreenshotTest {
   private val bench =
     BenchUiState(
       modelName = "qwen3 1.7B Q4_K - Medium",
+      profile = dev.lomio.ui.bench.BenchProfile.DEFAULT,
       result = BenchResult(512, 128, 3, 168.4, 3.1, 17.6, 0.4, "qwen3 1.7B Q4_K - Medium", "CPU"),
       systemInfo = "CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | MATMUL_INT8 = 1 | KLEIDIAI = 1 | REPACK = 1",
     )
