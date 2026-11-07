@@ -9,6 +9,10 @@ import dev.lomio.data.ModelRepository
 import dev.lomio.data.db.LomioDatabase
 import dev.lomio.data.db.MessageRole
 import dev.lomio.data.db.MessageStatus
+import dev.lomio.data.db.ModelEntity
+import dev.lomio.data.db.ModelSource
+import dev.lomio.data.db.ModelState
+import kotlinx.coroutines.runBlocking
 import dev.lomio.data.download.DownloadScheduler
 import dev.lomio.data.settings.SettingsRepository
 import dev.lomio.domain.ContextWindow
@@ -46,6 +50,12 @@ class ChatServiceTest {
   fun setUp() {
     db = LomioDatabase.inMemory(ApplicationProvider.getApplicationContext())
     chats = ChatRepository(db)
+    // conversation.model_id is a foreign key: the model must exist.
+    runBlocking {
+      db.models().upsert(
+        ModelEntity(id = "m1", source = ModelSource.LOCAL, displayName = "m1", sizeBytes = 1, state = ModelState.READY, createdAt = 1)
+      )
+    }
   }
 
   @After fun tearDown() = db.close()
