@@ -10,14 +10,13 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Migration scaffold. The exported Room schema (app/schemas, committed) must match the entities
- * in code: if this fails, you changed the schema without bumping the database version and
- * exporting a new JSON. When version 2 exists, add a MigrationTestHelper test here that creates
- * the DB at version 1 from the committed JSON and runs the migration.
+ * The exported Room schema (app/schemas, committed) must match the entities in code: if this
+ * fails, you changed the schema without bumping the database version and exporting a new JSON.
+ * Migrations are tested in [MigrationTest].
  */
 @RunWith(AndroidJUnit4::class)
 class SchemaTest {
-  private val version = 1
+  private val version = 2
   private val schema = File("schemas/dev.lomio.data.db.LomioDatabase/$version.json")
 
   @Test

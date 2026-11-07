@@ -4,6 +4,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.lomio.data.db.LomioDatabase
 import dev.lomio.data.db.MessageRole
+import dev.lomio.data.db.HIT_END
+import dev.lomio.data.db.HIT_START
 import dev.lomio.data.db.MessageStatus
 import dev.lomio.data.db.ModelEntity
 import dev.lomio.data.db.ModelSource
@@ -91,17 +93,52 @@ class DatabaseTest {
   }
 
   @Test
-  fun truncateAndCascadeDelete() = runTest {
+  fun deleteMessageAndCascadeDelete() = runTest {
     val c = chats.create(null)
     chats.addMessage(c.id, MessageRole.USER, "one")
     val two = chats.addMessage(c.id, MessageRole.ASSISTANT, "two")
     chats.addMessage(c.id, MessageRole.USER, "three")
-    chats.truncateFrom(c.id, two.id)
+    chats.deleteMessage(c.id, two.id)
+    // The reply and everything under it are gone; the question is the leaf again.
     assertEquals(listOf("one"), chats.messages(c.id).map { it.content })
+    assertEquals(1, chats.allMessages(c.id).size)
 
     chats.delete(c.id)
-    assertTrue(chats.messages(c.id).isEmpty())
+    assertTrue(chats.allMessages(c.id).isEmpty())
     assertNull(chats.conversation(c.id))
+  }
+
+  @Test
+  fun versionsFormABranchingThread() = runTest {
+    val c = chats.create(null)
+    val q = chats.addMessage(c.id, MessageRole.USER, "q")
+    val a1 = chats.addMessage(c.id, MessageRole.ASSISTANT, "a1")
+    // Regenerate: a second reply under the same question.
+    val a2 = chats.addMessage(c.id, MessageRole.ASSISTANT, "a2", parent = ChatRepository.Parent.Of(q.id))
+    chats.addMessage(c.id, MessageRole.USER, "follow-up")
+    assertEquals(listOf("q", "a2", "follow-up"), chats.messages(c.id).map { it.content })
+    val shown = chats.observeMessages(c.id).first()
+    assertEquals(listOf(0 to 1, 1 to 2, 0 to 1), shown.map { it.versionIndex to it.versionCount })
+
+    // Back to the first reply: its branch has no follow-up.
+    chats.stepVersion(c.id, a2.id, -1)
+    assertEquals(listOf("q", "a1"), chats.messages(c.id).map { it.content })
+    // Forward again lands on the newest leaf of that branch.
+    chats.stepVersion(c.id, a1.id, +1)
+    assertEquals(listOf("q", "a2", "follow-up"), chats.messages(c.id).map { it.content })
+    assertEquals(4, chats.allMessages(c.id).size)
+  }
+
+  @Test
+  fun messageSearchFindsEveryVersionWithASnippet() = runTest {
+    val c = chats.create(null)
+    chats.rename(c.id, "Cooking")
+    chats.addMessage(c.id, MessageRole.USER, "how do I make a creamy risotto at home")
+    val hits = chats.searchMessages("risotto").first()
+    assertEquals(1, hits.size)
+    assertEquals("Cooking", hits[0].title)
+    assertTrue(hits[0].snippet, hits[0].snippet.contains("${HIT_START}risotto$HIT_END"))
+    assertTrue(chats.searchMessages("   ").first().isEmpty())
   }
 
   @Test

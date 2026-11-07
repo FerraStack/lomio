@@ -92,6 +92,42 @@ class ChatServiceTest {
   }
 
   @Test
+  fun regenerateKeepsTheOldReplyAsAVersion() = runTest {
+    val s = service()
+    val c = chats.create("m1")
+    s.send(c.id, "hi")
+    s.awaitIdle()
+    val first = chats.messages(c.id).last()
+    assertTrue(s.regenerate(c.id))
+    s.awaitIdle()
+    val shown = chats.observeMessages(c.id).first()
+    assertEquals(listOf(MessageRole.USER, MessageRole.ASSISTANT), shown.map { it.role })
+    assertEquals(1 to 2, shown[1].versionIndex to shown[1].versionCount)
+    assertEquals(3, chats.allMessages(c.id).size)
+    // The model only saw the question, not the old reply.
+    assertEquals(listOf("user"), engine.lastMessages.filter { it.role != "system" }.map { it.role })
+    // ‹ goes back to the first reply.
+    chats.stepVersion(c.id, shown[1].id, -1)
+    assertEquals(first.id, chats.messages(c.id).last().id)
+  }
+
+  @Test
+  fun editAddsAVersionOfTheQuestionAndAnswersIt() = runTest {
+    val s = service()
+    val c = chats.create("m1")
+    s.send(c.id, "first question")
+    s.awaitIdle()
+    val question = chats.messages(c.id).first()
+    assertTrue(s.edit(c.id, question.id, "second question"))
+    s.awaitIdle()
+    val shown = chats.observeMessages(c.id).first()
+    assertEquals(listOf("second question", "Hello"), shown.map { it.content })
+    assertEquals(1 to 2, shown[0].versionIndex to shown[0].versionCount)
+    assertEquals(listOf("second question"), engine.lastMessages.filter { it.role == "user" }.map { it.content })
+    assertEquals(4, chats.allMessages(c.id).size)
+  }
+
+  @Test
   fun editWithoutModelKeepsHistory() = runTest {
     val s = service()
     val c = chats.create(null)

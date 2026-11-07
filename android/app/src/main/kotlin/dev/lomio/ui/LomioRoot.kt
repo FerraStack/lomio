@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -43,14 +44,17 @@ import dev.lomio.ui.models.ModelsActions
 import dev.lomio.ui.models.ModelsScreen
 import dev.lomio.ui.models.ModelsViewModel
 import dev.lomio.ui.settings.SettingsScreen
+import dev.lomio.ui.search.SearchActions
+import dev.lomio.ui.search.SearchScreen
+import dev.lomio.ui.search.SearchViewModel
 import kotlinx.coroutines.launch
 
 /** Screens on the back stack. The chat screen shows whichever conversation ChatViewModel has open. */
-enum class Screen { CHAT, MODELS, HF_SEARCH, SETTINGS, BENCHMARK, ABOUT }
+enum class Screen { CHAT, SEARCH, MODELS, HF_SEARCH, SETTINGS, BENCHMARK, ABOUT }
 
 private fun Screen.destination() =
   when (this) {
-    Screen.CHAT -> Destination.CHAT
+    Screen.CHAT, Screen.SEARCH -> Destination.CHAT
     Screen.MODELS, Screen.HF_SEARCH -> Destination.MODELS
     Screen.SETTINGS -> Destination.SETTINGS
     Screen.BENCHMARK -> Destination.BENCHMARK
@@ -63,6 +67,7 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
   val modelsVm: ModelsViewModel = viewModel { ModelsViewModel(container) }
   val drawerVm: DrawerViewModel = viewModel { DrawerViewModel(container) }
   val benchVm: BenchViewModel = viewModel { BenchViewModel(container) }
+  val searchVm: SearchViewModel = viewModel { SearchViewModel(container) }
 
   val backStack = remember { mutableStateListOf(Screen.CHAT) }
   val screen = backStack.last()
@@ -155,6 +160,11 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
               if (id == chatState.conversationId) chatVm.open(null)
               drawerVm.delete(id)
             },
+            onOpenSearch = { q ->
+              searchVm.setQuery(q.trim())
+              navigate(Screen.SEARCH)
+              scope.launch { drawer.close() }
+            },
           ),
       )
     },
@@ -170,7 +180,10 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
               onStop = chatVm::stop,
               onLoadModel = { chatVm.loadModel(it) },
               onManageModels = { navigate(Screen.MODELS) },
-              onRegenerate = chatVm::regenerate,
+              onRegenerate = { chatVm.regenerate(it) },
+              onShare = { share(context, it) },
+              onDeleteMessage = chatVm::deleteMessage,
+              onStepVersion = chatVm::stepVersion,
               onCopy = { copy(context, it) },
               onEdit = chatVm::edit,
               onToggleThinking = chatVm::toggleThinking,
@@ -181,8 +194,24 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
               onDismissCrash = chatVm::dismissCrash,
               onDismissLoadError = chatVm::dismissLoadError,
               onErrorShown = chatVm::errorShown,
+              onScrolledToMessage = chatVm::scrolledToMessage,
             ),
         )
+      Screen.SEARCH -> {
+        val state by searchVm.state.collectAsStateWithLifecycle()
+        SearchScreen(
+          state = state,
+          actions =
+            SearchActions(
+              onBack = { backStack.removeAt(backStack.lastIndex) },
+              onQuery = searchVm::setQuery,
+              onOpen = { r ->
+                chatVm.openAt(r.conversationId, r.messageId)
+                navigate(Screen.CHAT)
+              },
+            ),
+        )
+      }
       Screen.MODELS -> {
         val state by modelsVm.state.collectAsStateWithLifecycle()
         ModelsScreen(
@@ -265,6 +294,11 @@ fun MemoryWarningDialog(p: PendingLoad, onConfirm: () -> Unit, onDismiss: () -> 
     confirmButton = { TextButton(onClick = onConfirm) { Text("Load anyway") } },
     dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
   )
+}
+
+private fun share(context: Context, text: String) {
+  val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+  context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 
 private fun copy(context: Context, text: String) {

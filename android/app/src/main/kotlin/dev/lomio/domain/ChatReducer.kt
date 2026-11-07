@@ -15,6 +15,9 @@ data class UiMessage(
   val createdAt: Long = 0,
   /** While the prompt is being processed: 0..1. Null otherwise. */
   val promptProgress: Float? = null,
+  /** Position among this message's versions (regenerated replies, edited questions). */
+  val versionIndex: Int = 0,
+  val versionCount: Int = 1,
 )
 
 /** State of the (at most one) running generation. */

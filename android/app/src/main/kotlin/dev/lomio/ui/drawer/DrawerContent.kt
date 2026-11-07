@@ -2,6 +2,15 @@ package dev.lomio.ui.drawer
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.automirrored.outlined.ManageSearch
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -62,6 +71,8 @@ class DrawerActions(
   val onPin: (String, Boolean) -> Unit = { _, _ -> },
   val onRename: (String, String) -> Unit = { _, _ -> },
   val onDelete: (String) -> Unit = {},
+  /** Opens the message search results for the query. */
+  val onOpenSearch: (String) -> Unit = {},
 )
 
 /** Drawer per RESEARCH.md §9.0: new chat, destinations, searchable date-grouped history. */
@@ -74,6 +85,7 @@ fun DrawerContent(
   actions: DrawerActions,
 ) {
   var renaming by remember { mutableStateOf<ConversationSummary?>(null) }
+  var deleting by remember { mutableStateOf<ConversationSummary?>(null) }
   ModalDrawerSheet {
     Column(Modifier.padding(horizontal = 12.dp)) {
       FilledTonalButton(
@@ -100,10 +112,23 @@ fun DrawerContent(
         leadingIcon = { Icon(Icons.Outlined.Search, null) },
         singleLine = true,
         shape = RoundedCornerShape(28.dp),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { if (query.isNotBlank()) actions.onOpenSearch(query) }),
         modifier = Modifier.fillMaxWidth(),
       )
     }
     LazyColumn(Modifier.padding(horizontal = 12.dp)) {
+      if (query.isNotBlank()) {
+        item(key = "search-messages") {
+          NavigationDrawerItem(
+            label = { Text("Search messages for “${query.trim()}”", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            icon = { Icon(Icons.AutoMirrored.Outlined.ManageSearch, null) },
+            selected = false,
+            onClick = { actions.onOpenSearch(query) },
+            modifier = Modifier.padding(top = 8.dp),
+          )
+        }
+      }
       if (history.isEmpty()) {
         item {
           Text(
@@ -128,10 +153,24 @@ fun DrawerContent(
             selected = c.id == currentChatId && current == Destination.CHAT,
             actions = actions,
             onRename = { renaming = c },
+            onDelete = { deleting = c },
           )
         }
       }
     }
+  }
+  deleting?.let { c ->
+    AlertDialog(
+      onDismissRequest = { deleting = null },
+      title = { Text("Delete chat?") },
+      text = { Text("“${c.title}” and all its messages will be deleted from this device.") },
+      confirmButton = {
+        TextButton(onClick = { deleting = null; actions.onDelete(c.id) }) {
+          Text("Delete", color = MaterialTheme.colorScheme.error)
+        }
+      },
+      dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
+    )
   }
   renaming?.let { c ->
     TextInputDialog("Rename chat", c.title, singleLine = true, onDismiss = { renaming = null }) {
@@ -148,6 +187,7 @@ private fun HistoryRow(
   selected: Boolean,
   actions: DrawerActions,
   onRename: () -> Unit,
+  onDelete: () -> Unit,
 ) {
   var menu by remember { mutableStateOf(false) }
   Box {
@@ -156,7 +196,12 @@ private fun HistoryRow(
       shape = RoundedCornerShape(28.dp),
       modifier =
         Modifier.fillMaxWidth()
-          .combinedClickable(onClick = { actions.onOpenChat(c.id) }, onLongClick = { menu = true }),
+          .clip(RoundedCornerShape(28.dp))
+          .combinedClickable(
+            onClick = { actions.onOpenChat(c.id) },
+            onLongClick = { menu = true },
+            onLongClickLabel = "Chat options",
+          ),
     ) {
       Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (c.pinned) {
@@ -169,10 +214,19 @@ private fun HistoryRow(
     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
       DropdownMenuItem(
         text = { Text(if (c.pinned) "Unpin" else "Pin") },
+        leadingIcon = { Icon(Icons.Outlined.PushPin, null) },
         onClick = { menu = false; actions.onPin(c.id, !c.pinned) },
       )
-      DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
-      DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; actions.onDelete(c.id) })
+      DropdownMenuItem(
+        text = { Text("Rename") },
+        leadingIcon = { Icon(Icons.Outlined.Edit, null) },
+        onClick = { menu = false; onRename() },
+      )
+      DropdownMenuItem(
+        text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+        leadingIcon = { Icon(Icons.Outlined.Delete, null, tint = MaterialTheme.colorScheme.error) },
+        onClick = { menu = false; onDelete() },
+      )
     }
   }
 }

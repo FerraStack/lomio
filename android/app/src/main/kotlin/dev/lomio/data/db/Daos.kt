@@ -43,6 +43,19 @@ interface ModelDao {
 }
 
 /** Drawer row: conversation plus the model name, without loading messages. */
+/** A message that matches a full-text search; [snippet] marks matches with [HIT_START]/[HIT_END]. */
+data class SearchHit(
+  val messageId: String,
+  val conversationId: String,
+  val title: String,
+  val role: MessageRole,
+  val createdAt: Long,
+  val snippet: String,
+)
+
+const val HIT_START = '\uE000'
+const val HIT_END = '\uE001'
+
 data class ConversationSummary(
   val id: String,
   val title: String,
@@ -101,6 +114,9 @@ interface ConversationDao {
   @Query("UPDATE conversation SET gen_override_json = :json WHERE id = :id")
   suspend fun setGenOverride(id: String, json: String?)
 
+  @Query("UPDATE conversation SET leaf_id = :leafId WHERE id = :id")
+  suspend fun setLeaf(id: String, leafId: String?)
+
   @Query("DELETE FROM conversation WHERE id = :id") suspend fun delete(id: String)
 
   @Query("DELETE FROM conversation") suspend fun deleteAll()
@@ -131,17 +147,19 @@ interface MessageDao {
 
   @Query("DELETE FROM message WHERE id = :id") suspend fun delete(id: String)
 
-  /** Removes [fromCreatedAt] and everything after it (edit-and-resend / regenerate). */
-  @Query("DELETE FROM message WHERE conversation_id = :conversationId AND created_at >= :fromCreatedAt")
-  suspend fun truncateFrom(conversationId: String, fromCreatedAt: Long)
+  @Query("DELETE FROM message WHERE id IN (:ids)") suspend fun deleteAll(ids: Collection<String>)
+
+  @Query(
+    "SELECT m.id AS messageId, m.conversation_id AS conversationId, c.title AS title, m.role AS role, " +
+      "m.created_at AS createdAt, snippet(message_fts, '\uE000', '\uE001', '…', -1, 12) AS snippet " +
+      "FROM message_fts JOIN message m ON m.rowid = message_fts.rowid " +
+      "JOIN conversation c ON c.id = m.conversation_id " +
+      "WHERE message_fts MATCH :ftsQuery ORDER BY m.created_at DESC LIMIT 200"
+  )
+  fun searchMessages(ftsQuery: String): Flow<List<SearchHit>>
+
 
   /** Messages left in STREAMING state by a crash or process death. */
   @Query("UPDATE message SET status = 'STOPPED' WHERE status = 'STREAMING'")
   suspend fun markInterrupted(): Int
-
-  @Transaction
-  suspend fun replaceTail(conversationId: String, fromCreatedAt: Long, newMessages: List<MessageEntity>) {
-    truncateFrom(conversationId, fromCreatedAt)
-    newMessages.forEach { upsert(it) }
-  }
 }

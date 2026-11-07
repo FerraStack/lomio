@@ -72,6 +72,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.lomio.data.db.MessageRole
 import dev.lomio.domain.UiMessage
+import kotlinx.coroutines.delay
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.material.icons.outlined.Edit
 import dev.lomio.ui.components.Format
 import kotlinx.coroutines.launch
 
@@ -102,6 +106,8 @@ data class ChatUiState(
   /** Why the last model load failed (shown as a banner until dismissed). */
   val loadError: String? = null,
   val error: String? = null,
+  /** A message to scroll to and briefly highlight (opened from search). */
+  val scrollToMessageId: String? = null,
 )
 
 class ChatActions(
@@ -110,8 +116,13 @@ class ChatActions(
   val onStop: () -> Unit = {},
   val onLoadModel: (String) -> Unit = {},
   val onManageModels: () -> Unit = {},
-  val onRegenerate: () -> Unit = {},
+  /** Regenerate the given assistant reply (adds a version). */
+  val onRegenerate: (messageId: String) -> Unit = {},
   val onCopy: (String) -> Unit = {},
+  val onShare: (String) -> Unit = {},
+  val onDeleteMessage: (messageId: String) -> Unit = {},
+  /** Show the previous (-1) or next (+1) version of a message. */
+  val onStepVersion: (messageId: String, step: Int) -> Unit = { _, _ -> },
   val onEdit: (messageId: String, text: String) -> Unit = { _, _ -> },
   val onToggleThinking: () -> Unit = {},
   val onRename: (String) -> Unit = {},
@@ -121,6 +132,7 @@ class ChatActions(
   val onDismissCrash: () -> Unit = {},
   val onDismissLoadError: () -> Unit = {},
   val onErrorShown: () -> Unit = {},
+  val onScrolledToMessage: () -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -131,6 +143,7 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
   var dialog by rememberSaveable { mutableStateOf<String?>(null) } // "rename" | "system"
   var input by rememberSaveable { mutableStateOf("") }
   var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+  var deleting by remember { mutableStateOf<UiMessage?>(null) }
   val snackbar = remember { SnackbarHostState() }
 
   LaunchedEffect(state.error) {
@@ -222,10 +235,17 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
                 editingId = m.id
                 input = m.content
               },
+              onDelete = { deleting = it },
+              scrollToId = state.scrollToMessageId,
             )
         }
       }
       Composer(
+        editing = editingId != null,
+        onCancelEdit = {
+          editingId = null
+          input = ""
+        },
         text = input,
         onTextChange = { input = it },
         isGenerating = state.isGenerating,
@@ -242,6 +262,29 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
         onStop = actions.onStop,
       )
     }
+  }
+
+  deleting?.let { m ->
+    val user = m.role == MessageRole.USER
+    AlertDialog(
+      onDismissRequest = { deleting = null },
+      title = { Text(if (user) "Delete message?" else "Delete reply?") },
+      text = {
+        Text(
+          when {
+            user -> "This message and the replies under it will be deleted."
+            m.versionCount > 1 -> "This version of the reply will be deleted. The other versions stay."
+            else -> "This reply will be deleted."
+          }
+        )
+      },
+      confirmButton = {
+        TextButton(onClick = { deleting = null; actions.onDeleteMessage(m.id) }) {
+          Text("Delete", color = MaterialTheme.colorScheme.error)
+        }
+      },
+      dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
+    )
   }
 
   if (showPicker) {
@@ -285,13 +328,24 @@ private fun MessageList(
   isGenerating: Boolean,
   actions: ChatActions,
   onEdit: (UiMessage) -> Unit,
+  onDelete: (UiMessage) -> Unit,
+  scrollToId: String?,
 ) {
   // Reverse layout keeps the list pinned to the newest message while streaming.
   val listState = rememberLazyListState()
   val scope = rememberCoroutineScope()
   val reversed = remember(messages) { messages.asReversed() }
   val atBottom by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
-  val lastAssistantId = messages.lastOrNull { it.role == MessageRole.ASSISTANT }?.id
+  var flashId by remember { mutableStateOf<String?>(null) }
+  LaunchedEffect(scrollToId, reversed) {
+    val index = reversed.indexOfFirst { it.id == scrollToId }
+    if (scrollToId == null || index < 0) return@LaunchedEffect
+    listState.scrollToItem(index)
+    actions.onScrolledToMessage()
+    flashId = scrollToId
+    delay(1600)
+    flashId = null
+  }
   Box(Modifier.fillMaxSize()) {
     LazyColumn(
       state = listState,
@@ -301,16 +355,24 @@ private fun MessageList(
       modifier = Modifier.fillMaxSize(),
     ) {
       items(reversed, key = { it.id }, contentType = { it.role }) { m ->
+        val messageActions =
+          MessageActions(
+            onCopy = { actions.onCopy(m.content) },
+            onShare = { actions.onShare(m.content) },
+            onDelete = { onDelete(m) },
+            onEdit = { onEdit(m) },
+            onRegenerate = if (!isGenerating) ({ actions.onRegenerate(m.id) }) else null,
+            onStepVersion = if (!isGenerating) ({ step -> actions.onStepVersion(m.id, step) }) else null,
+          )
+        val flash by animateColorAsState(
+          if (m.id == flashId) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else Color.Transparent,
+          animationSpec = tween(400),
+          label = "search-highlight",
+        )
+        val itemModifier = Modifier.background(flash, RoundedCornerShape(12.dp))
         when (m.role) {
-          MessageRole.USER ->
-            UserMessage(m, onCopy = { actions.onCopy(m.content) }, onEdit = { onEdit(m) })
-          else ->
-            AssistantMessage(
-              m,
-              showStats = showStats,
-              onCopy = { actions.onCopy(m.content) },
-              onRegenerate = if (m.id == lastAssistantId && !isGenerating) actions.onRegenerate else null,
-            )
+          MessageRole.USER -> UserMessage(m, messageActions, itemModifier)
+          else -> AssistantMessage(m, showStats = showStats, actions = messageActions, modifier = itemModifier)
         }
       }
     }
@@ -327,6 +389,8 @@ private fun MessageList(
 
 @Composable
 private fun Composer(
+  editing: Boolean,
+  onCancelEdit: () -> Unit,
   text: String,
   onTextChange: (String) -> Unit,
   isGenerating: Boolean,
@@ -339,6 +403,21 @@ private fun Composer(
 ) {
   Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
     Column(Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
+      if (editing) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 4.dp),
+        ) {
+          Icon(Icons.Outlined.Edit, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+          Text(
+            "Editing message · sends as a new version",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f).padding(start = 8.dp),
+          )
+          TextButton(onClick = onCancelEdit) { Text("Cancel") }
+        }
+      }
       // The model is picked from the top bar only; the composer row holds per-message toggles.
       if (supportsThinking) {
         FilterChip(

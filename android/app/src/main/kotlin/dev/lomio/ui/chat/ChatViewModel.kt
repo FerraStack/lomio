@@ -22,6 +22,7 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
   private val conversationId = MutableStateFlow<String?>(null)
   private val thinking = MutableStateFlow(true)
   private val localError = MutableStateFlow<String?>(null)
+  private val scrollTarget = MutableStateFlow<String?>(null)
   private val loadError = MutableStateFlow<String?>(null)
   private val dismissedFailure = MutableStateFlow<EngineState.Failed?>(null)
   private val local = combine(thinking, localError, loadError, dismissedFailure, ::Local)
@@ -83,10 +84,24 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
           error = err ?: gen.error,
         )
       }
+      .combine(scrollTarget) { s, target -> s.copy(scrollToMessageId = target) }
       .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
 
   fun open(id: String?) {
     conversationId.value = id
+    scrollTarget.value = null
+  }
+
+  /** Opens a chat on the branch that contains [messageId] and scrolls to it. */
+  fun openAt(conversationId: String, messageId: String) =
+    viewModelScope.launch {
+      c.chats.selectBranch(conversationId, messageId)
+      open(conversationId)
+      scrollTarget.value = messageId
+    }
+
+  fun scrolledToMessage() {
+    scrollTarget.value = null
   }
 
   /** Returns the conversation to send into, creating one on first message. */
@@ -105,9 +120,21 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
     c.chatService.edit(id, messageId, text, thinking.value)
   }
 
-  fun regenerate() {
+  fun regenerate(messageId: String? = null) {
     val id = conversationId.value ?: return
-    c.chatService.regenerate(id, thinking.value)
+    c.chatService.regenerate(id, thinking.value, messageId)
+  }
+
+  fun stepVersion(messageId: String, step: Int) {
+    if (c.chatService.isBusy) return
+    val id = conversationId.value ?: return
+    viewModelScope.launch { c.chats.stepVersion(id, messageId, step) }
+  }
+
+  fun deleteMessage(messageId: String) {
+    if (c.chatService.isBusy) return
+    val id = conversationId.value ?: return
+    viewModelScope.launch { c.chats.deleteMessage(id, messageId) }
   }
 
   fun stop() = c.chatService.stop()

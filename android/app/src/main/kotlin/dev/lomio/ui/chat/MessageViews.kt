@@ -19,6 +19,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
+import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
@@ -70,31 +77,54 @@ import dev.lomio.llama.GenerationStats
 import dev.lomio.llama.StopReason
 import java.util.Locale
 
+/** What a message can do; lambdas are no-ops by default (screenshots, previews). */
+class MessageActions(
+  val onCopy: () -> Unit = {},
+  val onShare: () -> Unit = {},
+  val onDelete: () -> Unit = {},
+  val onEdit: () -> Unit = {},
+  /** Null when the reply can't be regenerated right now. */
+  val onRegenerate: (() -> Unit)? = null,
+  /** Previous (-1) or next (+1) version; null while generating. */
+  val onStepVersion: ((Int) -> Unit)? = null,
+)
+
 /** User message: right-aligned tonal bubble, plain text, max ~85% width (RESEARCH.md §9.1). */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun UserMessage(message: UiMessage, onCopy: () -> Unit, onEdit: () -> Unit, modifier: Modifier = Modifier) {
+fun UserMessage(message: UiMessage, actions: MessageActions, modifier: Modifier = Modifier) {
   var menu by remember { mutableStateOf(false) }
   BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
     val bubbleMaxWidth = maxWidth * 0.85f
-    Box {
-      Surface(
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
-        modifier =
-          Modifier.widthIn(max = bubbleMaxWidth)
-            .clip(RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp))
-            .combinedClickable(onClick = {}, onLongClick = { menu = true }),
-      ) {
-        Text(
-          message.content,
-          style = MaterialTheme.typography.bodyLarge,
-          modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-        )
+    Column(horizontalAlignment = Alignment.End) {
+      Box {
+        Surface(
+          color = MaterialTheme.colorScheme.secondaryContainer,
+          shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
+          modifier =
+            Modifier.widthIn(max = bubbleMaxWidth)
+              .clip(RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp))
+              .combinedClickable(
+                onClick = {},
+                onLongClick = { menu = true },
+                onLongClickLabel = "Message options",
+              ),
+        ) {
+          Text(
+            message.content,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+          )
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+          MenuItem("Edit", Icons.Outlined.Edit) { menu = false; actions.onEdit() }
+          MenuItem("Copy", Icons.Outlined.ContentCopy) { menu = false; actions.onCopy() }
+          MenuItem("Share", Icons.Outlined.Share) { menu = false; actions.onShare() }
+          MenuItem("Delete", Icons.Outlined.Delete, destructive = true) { menu = false; actions.onDelete() }
+        }
       }
-      DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-        DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit() })
-        DropdownMenuItem(text = { Text("Copy") }, onClick = { menu = false; onCopy() })
+      if (message.versionCount > 1) {
+        VersionSwitcher(message.versionIndex, message.versionCount, actions.onStepVersion)
       }
     }
   }
@@ -105,8 +135,7 @@ fun UserMessage(message: UiMessage, onCopy: () -> Unit, onEdit: () -> Unit, modi
 fun AssistantMessage(
   message: UiMessage,
   showStats: Boolean,
-  onCopy: () -> Unit,
-  onRegenerate: (() -> Unit)?,
+  actions: MessageActions,
   modifier: Modifier = Modifier,
 ) {
   val streaming = message.status == MessageStatus.STREAMING
@@ -127,16 +156,21 @@ fun AssistantMessage(
         }
     }
     if (!streaming) {
+      var more by remember { mutableStateOf(false) }
       Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onCopy, modifier = Modifier.size(36.dp)) {
-          Icon(Icons.Outlined.ContentCopy, "Copy", Modifier.size(18.dp))
+        if (message.versionCount > 1) {
+          VersionSwitcher(message.versionIndex, message.versionCount, actions.onStepVersion)
         }
-        if (onRegenerate != null) {
-          IconButton(onClick = onRegenerate, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Outlined.Refresh, "Regenerate", Modifier.size(18.dp))
+        FooterButton(Icons.Outlined.ContentCopy, "Copy", actions.onCopy)
+        actions.onRegenerate?.let { FooterButton(Icons.Outlined.Refresh, "Regenerate", it) }
+        FooterButton(Icons.Outlined.Share, "Share", actions.onShare)
+        Box {
+          FooterButton(Icons.Outlined.MoreHoriz, "More actions") { more = true }
+          DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
+            MenuItem("Delete", Icons.Outlined.Delete, destructive = true) { more = false; actions.onDelete() }
           }
         }
-        if (showStats) message.stats?.let { StatsLine(it) }
+        if (showStats) message.stats?.let { StatsLine(it, Modifier.weight(1f, fill = false)) }
       }
     }
   }
@@ -150,6 +184,50 @@ fun AssistantMessage(
  * and the same parser stays in use after the reply finishes, so there is no re-parse or flash at
  * the end. Replies loaded from history are parsed once, off the main thread.
  */
+@Composable
+private fun FooterButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+  IconButton(onClick = onClick, modifier = Modifier.size(36.dp)) {
+    Icon(icon, label, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+  }
+}
+
+@Composable
+private fun MenuItem(text: String, icon: ImageVector, destructive: Boolean = false, onClick: () -> Unit) {
+  val color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+  DropdownMenuItem(
+    text = { Text(text, color = color) },
+    leadingIcon = { Icon(icon, null, tint = color) },
+    onClick = onClick,
+  )
+}
+
+/** ‹ 2/3 › between versions of a regenerated reply or an edited question. */
+@Composable
+fun VersionSwitcher(index: Int, count: Int, onStep: ((Int) -> Unit)?) {
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    IconButton(
+      onClick = { onStep?.invoke(-1) },
+      enabled = onStep != null && index > 0,
+      modifier = Modifier.size(32.dp),
+    ) {
+      Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, "Previous version", Modifier.size(18.dp))
+    }
+    Text(
+      "${index + 1}/$count",
+      style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      modifier = Modifier.semantics { contentDescription = "Version ${index + 1} of $count" },
+    )
+    IconButton(
+      onClick = { onStep?.invoke(+1) },
+      enabled = onStep != null && index < count - 1,
+      modifier = Modifier.size(32.dp),
+    ) {
+      Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, "Next version", Modifier.size(18.dp))
+    }
+  }
+}
+
 @Composable
 fun MarkdownText(content: String, modifier: Modifier = Modifier, streaming: Boolean = false) {
   val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
@@ -322,14 +400,14 @@ private fun StatusNote(text: String) {
 }
 
 @Composable
-private fun StatsLine(stats: GenerationStats) {
+private fun StatsLine(stats: GenerationStats, modifier: Modifier = Modifier) {
   Text(
     statsText(stats),
     style = MaterialTheme.typography.labelSmall,
     color = MaterialTheme.colorScheme.onSurfaceVariant,
     maxLines = 1,
     overflow = TextOverflow.Ellipsis,
-    modifier = Modifier.padding(start = 4.dp),
+    modifier = modifier.padding(start = 4.dp),
   )
 }
 

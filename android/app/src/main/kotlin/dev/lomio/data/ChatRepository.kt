@@ -15,7 +15,11 @@ import dev.lomio.llama.StopReason
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
+import androidx.room.withTransaction
+import dev.lomio.data.db.SearchHit
+import dev.lomio.domain.MessageTree
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -61,7 +65,7 @@ object StatsCodec {
     }
 }
 
-fun MessageEntity.toUi() =
+fun MessageEntity.toUi(versionIndex: Int = 0, versionCount: Int = 1) =
   UiMessage(
     id = id,
     role = role,
@@ -70,6 +74,8 @@ fun MessageEntity.toUi() =
     status = status,
     stats = StatsCodec.decode(statsJson),
     createdAt = createdAt,
+    versionIndex = versionIndex,
+    versionCount = versionCount,
   )
 
 class ChatRepository(private val db: LomioDatabase, private val clock: () -> Long = System::currentTimeMillis) {
@@ -90,10 +96,50 @@ class ChatRepository(private val db: LomioDatabase, private val clock: () -> Lon
 
   suspend fun conversation(id: String) = conversations.get(id)
 
+  /** The visible branch of the conversation, with version numbers. */
   fun observeMessages(conversationId: String): Flow<List<UiMessage>> =
-    messages.observe(conversationId).map { list -> list.map { it.toUi() } }
+    combine(messages.observe(conversationId), conversations.observe(conversationId)) { list, conv ->
+      MessageTree.visible(list, conv?.leafId).map { it.message.toUi(it.versionIndex, it.versionCount) }
+    }
 
-  suspend fun messages(conversationId: String): List<MessageEntity> = messages.list(conversationId)
+  /** Every message of the conversation, all branches included. */
+  suspend fun allMessages(conversationId: String): List<MessageEntity> = messages.list(conversationId)
+
+  /** The visible branch, root first: what the model sees. */
+  suspend fun messages(conversationId: String): List<MessageEntity> =
+    MessageTree.path(messages.list(conversationId), conversations.get(conversationId)?.leafId)
+
+  /** The branch from the root down to [messageId]. */
+  suspend fun pathTo(conversationId: String, messageId: String): List<MessageEntity> =
+    MessageTree.path(messages.list(conversationId), messageId)
+
+  /** Shows the branch through [messageId], ending at its newest leaf. */
+  suspend fun selectBranch(conversationId: String, messageId: String) {
+    val all = messages.list(conversationId)
+    if (all.none { it.id == messageId }) return
+    conversations.setLeaf(conversationId, MessageTree.newestLeafUnder(all, messageId))
+  }
+
+  /** Switches the version of [messageId] by [step] (‹ = -1, › = +1). */
+  suspend fun stepVersion(conversationId: String, messageId: String, step: Int) {
+    val all = messages.list(conversationId)
+    val target = MessageTree.stepVersion(all, messageId, step) ?: return
+    conversations.setLeaf(conversationId, MessageTree.newestLeafUnder(all, target))
+  }
+
+  /** Deletes [messageId] and the replies below it; another version (or the parent) is shown. */
+  suspend fun deleteMessage(conversationId: String, messageId: String) =
+    db.withTransaction {
+      val all = messages.list(conversationId)
+      val leaf = MessageTree.leafAfterDelete(all, messageId)
+      messages.deleteAll(MessageTree.subtree(all, messageId))
+      conversations.setLeaf(conversationId, leaf)
+    }
+
+  fun searchMessages(query: String): Flow<List<SearchHit>> {
+    val fts = HistoryGrouping.ftsQuery(query)
+    return if (fts.isBlank()) flowOf(emptyList()) else messages.searchMessages(fts)
+  }
 
   suspend fun message(id: String) = messages.get(id)
 
@@ -118,14 +164,29 @@ class ChatRepository(private val db: LomioDatabase, private val clock: () -> Lon
 
   suspend fun deleteAll() = conversations.deleteAll()
 
+  /** Where [addMessage] attaches a message in the conversation tree. */
+  sealed interface Parent {
+    /** At the end of the visible branch (a normal new message). */
+    data object Leaf : Parent
+
+    /** Under a given message, or at the root for null: adds a new version next to its siblings. */
+    data class Of(val id: String?) : Parent
+  }
+
+  /** Adds a message under [parent] and makes it the shown leaf. */
   suspend fun addMessage(
     conversationId: String,
     role: MessageRole,
     content: String,
     status: MessageStatus = MessageStatus.COMPLETE,
     modelId: String? = null,
-    parentId: String? = null,
-  ): MessageEntity {
+    parent: Parent = Parent.Leaf,
+  ): MessageEntity = db.withTransaction {
+    val parentId =
+      when (parent) {
+        Parent.Leaf -> messages(conversationId).lastOrNull()?.id
+        is Parent.Of -> parent.id
+      }
     val m =
       MessageEntity(
         id = UUID.randomUUID().toString(),
@@ -139,7 +200,8 @@ class ChatRepository(private val db: LomioDatabase, private val clock: () -> Lon
       )
     messages.upsert(m)
     conversations.touch(conversationId, m.createdAt, modelId)
-    return m
+    conversations.setLeaf(conversationId, m.id)
+    m
   }
 
   suspend fun finishMessage(
@@ -149,12 +211,6 @@ class ChatRepository(private val db: LomioDatabase, private val clock: () -> Lon
     status: MessageStatus,
     stats: GenerationStats?,
   ) = messages.finish(id, content, reasoning?.takeIf { it.isNotEmpty() }, status, stats?.let(StatsCodec::encode))
-
-  /** Deletes [fromMessageId] and every later message of the conversation. */
-  suspend fun truncateFrom(conversationId: String, fromMessageId: String) {
-    val m = messages.get(fromMessageId) ?: return
-    messages.truncateFrom(conversationId, m.createdAt)
-  }
 
   suspend fun recoverInterrupted(): Int = messages.markInterrupted()
 }
