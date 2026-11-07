@@ -69,13 +69,32 @@ fun parseColumnAlignments(delimiterRow: String, columns: Int): List<ColumnAlign>
  * Each column starts at its widest cell, clamped to [minColumn]..[maxColumn]; longer cells wrap.
  * When that leaves the table narrower than [viewport], the spare width first goes back to the
  * clamped columns (so they wrap less), then the rest is shared in proportion to the column
- * widths so the table fills the message. A table wider than [viewport] scrolls horizontally.
+ * widths so the table fills the message. A table that is only a little wider than [viewport]
+ * (up to a quarter) wraps its widest columns, down to [shrinkFloor], to fit instead of scrolling
+ * by a few pixels. Anything wider scrolls horizontally.
  */
-fun tableColumnWidths(natural: IntArray, minColumn: Int, maxColumn: Int, viewport: Int): IntArray {
+fun tableColumnWidths(
+  natural: IntArray,
+  minColumn: Int,
+  maxColumn: Int,
+  viewport: Int,
+  shrinkFloor: Int = minColumn,
+): IntArray {
   val cap = maxOf(minColumn, maxColumn)
   val w = IntArray(natural.size) { natural[it].coerceIn(minColumn, cap) }
+  if (w.isEmpty()) return w
   var spare = viewport - w.sum()
-  if (spare <= 0 || w.isEmpty()) return w
+  if (spare < 0 && -spare <= viewport / 4) {
+    val floor = IntArray(w.size) { minOf(w[it], maxOf(minColumn, shrinkFloor)) }
+    val room = IntArray(w.size) { w[it] - floor[it] }
+    if (room.sum() >= -spare) {
+      val cut = IntArray(w.size)
+      share(cut, room, -spare)
+      for (i in w.indices) w[i] -= cut[i]
+    }
+    return w
+  }
+  if (spare <= 0) return w
 
   val deficits = IntArray(w.size) { maxOf(0, natural[it] - w[it]) }
   val totalDeficit = deficits.sum()
@@ -109,6 +128,7 @@ private val CellPaddingH = 12.dp
 private val CellPaddingV = 8.dp
 private val MinColumn = 48.dp
 private val MaxColumn = 240.dp
+private val ShrinkFloor = 96.dp
 private val EdgeFade = 28.dp
 
 /**
@@ -203,7 +223,8 @@ private fun TableGrid(columns: Int, viewport: Int, content: @Composable () -> Un
       val c = i % columns
       natural[c] = maxOf(natural[c], measurables[i].maxIntrinsicWidth(Constraints.Infinity))
     }
-    val widths = tableColumnWidths(natural, MinColumn.roundToPx(), MaxColumn.roundToPx(), viewport)
+    val widths =
+      tableColumnWidths(natural, MinColumn.roundToPx(), MaxColumn.roundToPx(), viewport, ShrinkFloor.roundToPx())
     val heights = IntArray(rowCount)
     for (i in 0 until rowCount * columns) {
       val r = i / columns

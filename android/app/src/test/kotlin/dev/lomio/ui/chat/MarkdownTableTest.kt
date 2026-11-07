@@ -53,6 +53,17 @@ class TableLogicTest {
   }
 
   @Test
+  fun slightlyTooWideTableWrapsToFitInsteadOfScrolling() {
+    // 40 px too wide: the columns give up width in proportion to how far above the floor they are.
+    val w = tableColumnWidths(intArrayOf(300, 200, 160), minColumn = 50, maxColumn = 400, viewport = 620, shrinkFloor = 96)
+    assertEquals(620, w.sum())
+    assertArrayEquals(intArrayOf(279, 189, 152), w)
+    // Not enough room above the floor: keep content widths and scroll.
+    val tight = tableColumnWidths(intArrayOf(100, 100, 100), minColumn = 50, maxColumn = 400, viewport = 280, shrinkFloor = 96)
+    assertArrayEquals(intArrayOf(100, 100, 100), tight)
+  }
+
+  @Test
   fun emptyAndZeroViewportAreSafe() {
     assertEquals(0, tableColumnWidths(IntArray(0), 50, 400, 600).size)
     assertArrayEquals(intArrayOf(50), tableColumnWidths(intArrayOf(10), 50, 400, 0))
