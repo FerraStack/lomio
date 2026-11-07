@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs inside reactivecircus/android-emulator-runner. Installs the debug + test APKs, takes a
-# launch screenshot, runs the end-to-end tests with a tiny GGUF (UI chat flow, KV-cache reuse
-# after a stop during prompt processing) and fails on any crash in logcat. Outputs land in ./e2e-out (uploaded as an artifact by CI).
+# launch screenshot, runs every instrumentation test with a tiny GGUF and fails on any crash in
+# logcat. Outputs land in ./e2e-out (uploaded as an artifact by CI).
 set -euo pipefail
 
 APK=apk/app-debug.apk
