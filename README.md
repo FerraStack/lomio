@@ -53,9 +53,60 @@ stats line. arm64 phones are not tested yet:
   when the GPU can't be used, and turns itself off after a crash during a GPU load. See
   [docs/GPU.md](docs/GPU.md); untested on real phones so far.
 - A local benchmark (pp/tg tokens per second, and where the model runs).
+- Local API server (off by default): an OpenAI-compatible endpoint for other apps, using the
+  loaded model. See [Local API server](#local-api-server).
 
 Not done yet: split GGUF files, a vision projector for imported (local) models, a tablet layout. Screenshots of every screen are
 posted by CI on each pull request; README screenshots are a TODO.
+
+## Local API server
+
+Settings → **Local API server** turns on an OpenAI-compatible HTTP server so other apps can use
+the model loaded in Lomio: Termux scripts, coding tools, chat front-ends, anything that lets you
+set a base URL.
+
+- **Off by default.** While it runs, a notification shows the address and has a Stop button. A
+  foreground service (type `specialUse`) keeps the process and the model in memory.
+- **127.0.0.1 only** unless you turn on *Allow devices on your Wi-Fi*. Then it listens on all
+  interfaces, and every request needs the API key shown in Settings
+  (`Authorization: Bearer <key>`). In loopback mode, requests whose `Host` isn't
+  `127.0.0.1`/`localhost` are refused (no DNS rebinding from web pages). JSON bodies must be
+  sent as `application/json` (no cross-site form posts).
+- **Endpoints:** `GET /v1/models` (the loaded model, named after its GGUF file) and
+  `POST /v1/chat/completions`, with or without `"stream": true` (SSE, `data: [DONE]` at the
+  end, `stream_options.include_usage` supported). Supported fields: `messages` (text content;
+  `developer` counts as `system`), `temperature`, `top_p`, `top_k`, `min_p`, `max_tokens` /
+  `max_completion_tokens`, `stop`, `seed`, `presence_penalty`, `frequency_penalty`,
+  `repeat_penalty`, `chat_template_kwargs.enable_thinking`. Fields you leave out use Lomio's
+  global and per-model settings. Reasoning models return their thoughts in
+  `reasoning_content`, like llama.cpp's server. The `model` field is accepted but ignored: the
+  server always answers with the loaded model.
+- One reply at a time. Further requests wait their turn. While the app itself is writing a
+  reply, requests get `503` with `Retry-After`. A client that disconnects stops its
+  generation.
+
+```sh
+# From Termux on the phone (default port 8080):
+curl http://127.0.0.1:8080/v1/models
+
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Write a haiku about autumn"}]}'
+
+# Streaming:
+curl -N http://127.0.0.1:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Count to five"}],"stream":true}'
+
+# From a laptop on the same Wi-Fi (with Allow devices on your Wi-Fi turned on):
+curl http://192.168.1.23:8080/v1/chat/completions \
+  -H "Authorization: Bearer lomio-…" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Hello"}]}'
+```
+
+With the OpenAI Python SDK: `OpenAI(base_url="http://127.0.0.1:8080/v1", api_key="unused")`
+(use the real key in Wi-Fi mode).
 
 ## Architecture
 
@@ -145,6 +196,9 @@ ccache.
    - runs `VisionChatTest` with SmolVLM-256M Q8_0 and its Q8_0 projector (279 MB, cached):
      attach an image through the attach button (the Photo Picker's intent is answered by
      espresso-intents), send a question and check for a non-empty answer
+   - runs `ApiServerEndToEndTest`: switch the local API server on in Settings, then call
+     `/v1/models` and `/v1/chat/completions` (streamed and plain) over HTTP against the real
+     engine, and check the port closes when it's switched off
    - fails on any crash of `dev.lomio` in logcat
 3. **`screenshots-comment`** (pull requests): pushes the PNGs to the orphan `ci-screenshots`
    branch (only the latest run per PR is kept; a push that races another PR is rebased and

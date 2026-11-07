@@ -3,6 +3,10 @@ package dev.lomio
 import android.content.Context
 import androidx.datastore.preferences.preferencesDataStore
 import dev.lomio.data.AttachmentStore
+import dev.lomio.api.ApiServer
+import dev.lomio.api.ApiServerController
+import dev.lomio.api.ApiServerSettingsRepository
+import dev.lomio.api.EngineApiBackend
 import dev.lomio.data.ChatRepository
 import dev.lomio.data.transfer.ChatArchive
 import dev.lomio.data.GgufReader
@@ -29,6 +33,7 @@ import kotlinx.coroutines.SupervisorJob
 import okhttp3.OkHttpClient
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
+private val Context.apiServerStore by preferencesDataStore(name = "api_server")
 
 /** Manual DI: one instance per process, created by [LomioApp]. */
 class AppContainer(context: Context) {
@@ -71,6 +76,13 @@ class AppContainer(context: Context) {
   val memory = AndroidMemoryProvider(appContext)
   val modelManager = ModelManager(engine, models, settings, crashGuard, memory)
   val chatService = ChatService(engine, modelManager, chats, models, settings, scope)
+  val apiServer =
+    ApiServerController(
+      appContext,
+      ApiServer(EngineApiBackend(engine, { modelManager.activeModelId.value }, models, settings, { chatService.isBusy })),
+      ApiServerSettingsRepository(appContext.apiServerStore),
+      scope,
+    )
 
   fun setHfToken(token: String?) {
     hfToken = token

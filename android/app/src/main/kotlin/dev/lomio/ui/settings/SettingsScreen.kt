@@ -90,6 +90,8 @@ fun SettingsScreen(
   gpu: GpuSupport = GpuSupport.UNKNOWN,
   onExportAll: (ExportFormat) -> Unit = {},
   onImport: () -> Unit = {},
+  apiServer: ApiServerUiState? = null,
+  apiServerActions: ApiServerActions = ApiServerActions(),
 ) {
   var exportDialog by remember { mutableStateOf(false) }
   if (exportDialog) {
@@ -184,6 +186,8 @@ fun SettingsScreen(
       )
       TokenTestRow(enabled = settings.hfToken.isNotBlank(), state = tokenCheck, onTest = onTestToken)
       Spacer(Modifier.size(24.dp))
+
+      apiServer?.let { ApiServerSection(it, apiServerActions) }
     }
   }
 }
