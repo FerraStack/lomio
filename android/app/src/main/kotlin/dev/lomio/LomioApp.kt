@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import dev.lomio.launch.Shortcuts
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -29,6 +30,14 @@ class LomioApp : Application() {
       container.settings.settings.map { it.hfToken }.distinctUntilChanged().collect {
         container.setHfToken(it)
       }
+    }
+    // Keep the launcher's "continue your last chat" shortcut current.
+    container.scope.launch {
+      container.chats
+        .observeHistory("")
+        .map { Shortcuts.lastChat(it) }
+        .distinctUntilChanged { a, b -> a?.id == b?.id && a?.title == b?.title }
+        .collect { runCatching { Shortcuts.publishLastChat(this@LomioApp, it) } }
     }
     ProcessLifecycleOwner.get().lifecycle.addObserver(ForegroundObserver(container))
   }

@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Lomio</string>
+    <string name="shortcut_new_chat_short">New chat</string>
+    <string name="shortcut_new_chat_long">Start a new chat</string>
+    <string name="shortcut_new_chat_disabled">Lomio can\'t start a chat right now</string>
+    <string name="tile_ask">Ask Lomio</string>
 </resources>
