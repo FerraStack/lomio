@@ -13,6 +13,8 @@ interface ModelDao {
   @Query("SELECT * FROM model ORDER BY COALESCE(last_used_at, created_at) DESC")
   fun observeAll(): Flow<List<ModelEntity>>
 
+  @Query("SELECT * FROM model") suspend fun all(): List<ModelEntity>
+
   @Query("SELECT * FROM model WHERE id = :id") suspend fun get(id: String): ModelEntity?
 
   @Query("SELECT * FROM model WHERE id = :id") fun observe(id: String): Flow<ModelEntity?>
@@ -91,6 +93,8 @@ interface ConversationDao {
   fun search(query: String, ftsQuery: String): Flow<List<ConversationSummary>>
 
   @Query("SELECT * FROM conversation WHERE id = :id") suspend fun get(id: String): ConversationEntity?
+
+  @Query("SELECT * FROM conversation ORDER BY pinned DESC, updated_at DESC") suspend fun all(): List<ConversationEntity>
 
   @Query("SELECT * FROM conversation WHERE id = :id")
   fun observe(id: String): Flow<ConversationEntity?>

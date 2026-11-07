@@ -16,6 +16,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
+import android.widget.Toast
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -25,8 +29,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import dev.lomio.AppContainer
 import dev.lomio.BuildConfig
@@ -79,6 +81,7 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
   val drawerVm: DrawerViewModel = viewModel { DrawerViewModel(container) }
   val benchVm: BenchViewModel = viewModel { BenchViewModel(container) }
   val searchVm: SearchViewModel = viewModel { SearchViewModel(container) }
+  val transferVm: TransferViewModel = viewModel { TransferViewModel(container) }
 
   val backStack = remember { mutableStateListOf(Screen.CHAT) }
   var settingsModelId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -131,6 +134,34 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
     rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
       uri?.let { modelsVm.import(it) }
     }
+  // Export / import via the system file picker (SAF).
+  val exportJsonLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(ExportFormat.JSON.mime)) { uri ->
+      val r = transferVm.pending
+      transferVm.pending = null
+      if (uri != null && r != null) transferVm.export(context.contentResolver, uri, r)
+    }
+  val exportMarkdownLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(ExportFormat.MARKDOWN.mime)) { uri ->
+      val r = transferVm.pending
+      transferVm.pending = null
+      if (uri != null && r != null) transferVm.export(context.contentResolver, uri, r)
+    }
+  val importChatsLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+      uri?.let { transferVm.import(context.contentResolver, it) }
+    }
+  fun startExport(request: ExportRequest) {
+    transferVm.pending = request
+    when (request.format) {
+      ExportFormat.JSON -> exportJsonLauncher.launch(request.fileName)
+      ExportFormat.MARKDOWN -> exportMarkdownLauncher.launch(request.fileName)
+    }
+  }
+  LaunchedEffect(transferVm) {
+    transferVm.messages.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+  }
+
   val notificationPermission =
     rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
@@ -176,6 +207,7 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
               if (id == chatState.conversationId) chatVm.open(null)
               drawerVm.delete(id)
             },
+            onExport = { id, title, format -> startExport(ExportRequest(listOf(id), format, title)) },
             onOpenSearch = { q ->
               searchVm.setQuery(q.trim())
               navigate(Screen.SEARCH)
@@ -210,6 +242,9 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
               onSetGeneration = { chatVm.setGenerationOverride(it) },
               onSaveGenerationAsModelDefault = chatVm::saveGenerationAsModelDefault,
               onOpenModelSettings = { container.modelManager.activeModelId.value?.let(::openModelSettings) },
+              onExport = { format ->
+                chatState.conversationId?.let { startExport(ExportRequest(listOf(it), format, chatState.title)) }
+              },
               onNewChat = { chatVm.open(null) },
               onDelete = { chatVm.delete {} },
               onDismissCrash = chatVm::dismissCrash,
@@ -318,6 +353,8 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
             tokenCheck = tokenCheck,
             onTestToken = { settingsVm.testToken() },
             gpu = remember { GpuSupport.detect() },
+            onExportAll = { startExport(ExportRequest(null, it)) },
+            onImport = { importChatsLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
           )
         }
       Screen.BENCHMARK -> {

@@ -1,5 +1,7 @@
 package dev.lomio.ui.settings
 
+import androidx.compose.runtime.remember
+
 import androidx.compose.foundation.layout.size
 
 import androidx.compose.foundation.layout.Spacer
@@ -21,6 +23,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedButton
 
 import dev.lomio.data.hf.TokenCheck
+import androidx.compose.material.icons.outlined.FileUpload
+
+import androidx.compose.material.icons.outlined.FileDownload
+
+
+import dev.lomio.ui.components.ExportFormatDialog
+
+import dev.lomio.ui.ExportFormat
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -56,7 +66,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -79,7 +88,13 @@ fun SettingsScreen(
   tokenCheck: TokenCheckState? = null,
   onTestToken: () -> Unit = {},
   gpu: GpuSupport = GpuSupport.UNKNOWN,
+  onExportAll: (ExportFormat) -> Unit = {},
+  onImport: () -> Unit = {},
 ) {
+  var exportDialog by remember { mutableStateOf(false) }
+  if (exportDialog) {
+    ExportFormatDialog("Export all chats", onPick = { exportDialog = false; onExportAll(it) }, onDismiss = { exportDialog = false })
+  }
   Scaffold(
     modifier = modifier,
     topBar = {
@@ -137,6 +152,25 @@ fun SettingsScreen(
       }
       LoadControls(settings.load) { l -> onChange { it.copy(load = l) } }
       GpuControls(settings, gpu, onChange)
+
+      Section("Data")
+      Text(
+        "Chats stay on this device. Export them to keep a copy or move them to another phone.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+      Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { exportDialog = true }) {
+          Icon(Icons.Outlined.FileDownload, null, Modifier.size(18.dp))
+          Spacer(Modifier.size(8.dp))
+          Text("Export chats")
+        }
+        OutlinedButton(onClick = onImport) {
+          Icon(Icons.Outlined.FileUpload, null, Modifier.size(18.dp))
+          Spacer(Modifier.size(8.dp))
+          Text("Import")
+        }
+      }
 
       Section("Downloads")
       LocalTextField(

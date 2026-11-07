@@ -2,6 +2,9 @@ package dev.lomio.ui.drawer
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.outlined.FileDownload
+import dev.lomio.ui.ExportFormat
+import dev.lomio.ui.components.ExportFormatDialog
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
@@ -73,6 +76,7 @@ class DrawerActions(
   val onDelete: (String) -> Unit = {},
   /** Opens the message search results for the query. */
   val onOpenSearch: (String) -> Unit = {},
+  val onExport: (id: String, title: String, format: ExportFormat) -> Unit = { _, _, _ -> },
 )
 
 /** Drawer per RESEARCH.md §9.0: new chat, destinations, searchable date-grouped history. */
@@ -86,6 +90,7 @@ fun DrawerContent(
 ) {
   var renaming by remember { mutableStateOf<ConversationSummary?>(null) }
   var deleting by remember { mutableStateOf<ConversationSummary?>(null) }
+  var exporting by remember { mutableStateOf<ConversationSummary?>(null) }
   ModalDrawerSheet {
     Column(Modifier.padding(horizontal = 12.dp)) {
       FilledTonalButton(
@@ -154,10 +159,21 @@ fun DrawerContent(
             actions = actions,
             onRename = { renaming = c },
             onDelete = { deleting = c },
+            onExport = { exporting = c },
           )
         }
       }
     }
+  }
+  exporting?.let { c ->
+    ExportFormatDialog(
+      "Export “${c.title}”",
+      onPick = {
+        exporting = null
+        actions.onExport(c.id, c.title, it)
+      },
+      onDismiss = { exporting = null },
+    )
   }
   deleting?.let { c ->
     AlertDialog(
@@ -188,6 +204,7 @@ private fun HistoryRow(
   actions: DrawerActions,
   onRename: () -> Unit,
   onDelete: () -> Unit,
+  onExport: () -> Unit,
 ) {
   var menu by remember { mutableStateOf(false) }
   Box {
@@ -221,6 +238,11 @@ private fun HistoryRow(
         text = { Text("Rename") },
         leadingIcon = { Icon(Icons.Outlined.Edit, null) },
         onClick = { menu = false; onRename() },
+      )
+      DropdownMenuItem(
+        text = { Text("Export") },
+        leadingIcon = { Icon(Icons.Outlined.FileDownload, null) },
+        onClick = { menu = false; onExport() },
       )
       DropdownMenuItem(
         text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
