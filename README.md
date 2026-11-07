@@ -137,7 +137,12 @@ ccache.
      espresso-intents), send a question and check for a non-empty answer
    - fails on any crash of `dev.lomio` in logcat
 3. **`screenshots-comment`** (pull requests): pushes the PNGs to the orphan `ci-screenshots`
-   branch and creates or updates a single PR comment with a light/dark table.
+   branch (only the latest run per PR is kept; a push that races another PR is rebased and
+   retried) and creates or updates a single PR comment with a light/dark table.
+
+[`screenshots-cleanup.yml`](.github/workflows/screenshots-cleanup.yml) deletes a PR's
+screenshots when it closes and squashes the branch weekly. All actions are pinned to commit
+SHAs (Dependabot proposes updates); workflows default to `contents: read`.
 
 ## License
 

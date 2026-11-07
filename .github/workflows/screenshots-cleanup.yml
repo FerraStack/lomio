@@ -1,0 +1,70 @@
+name: Screenshot cleanup
+
+# Keeps the orphan ci-screenshots branch small (issue #6):
+# - when a PR closes, its pr-<n>/ folder is deleted;
+# - once a week the branch is squashed to a single commit holding only open PRs' folders.
+# No PR code is checked out or run here, so pull_request_target is safe.
+on:
+  pull_request_target:
+    types: [closed]
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-screenshots-cleanup
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Prune ci-screenshots
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          git init -q pub
+          cd pub
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git fetch -q --depth 1 origin ci-screenshots 2>/dev/null; then
+            echo "no ci-screenshots branch yet"
+            exit 0
+          fi
+          git checkout -q -b ci-screenshots FETCH_HEAD
+
+          if [ "$EVENT" = "pull_request_target" ]; then
+            if [ ! -d "pr-$PR" ]; then echo "nothing to prune for PR #$PR"; exit 0; fi
+            git rm -rq "pr-$PR"
+            git commit -qm "Remove screenshots of closed PR #$PR"
+            for attempt in 1 2 3 4 5; do
+              if git push -q origin HEAD:ci-screenshots; then exit 0; fi
+              sleep $((attempt * 3))
+              git fetch -q --depth 1 origin ci-screenshots
+              git rebase -q --onto FETCH_HEAD HEAD~1
+            done
+            echo "::error::could not push the cleanup"
+            exit 1
+          fi
+
+          # Weekly: keep only open PRs' folders and squash history into one commit.
+          open=$(gh pr list -R "$REPO" --state open --limit 200 --json number --jq '.[].number')
+          for d in pr-*; do
+            [ -d "$d" ] || continue
+            n="${d#pr-}"
+            if ! echo "$open" | grep -qx "$n"; then git rm -rq "$d"; fi
+          done
+          tree=$(git write-tree)
+          commit=$(git commit-tree "$tree" -m "Screenshots of open PRs (squashed $(date -u +%F))")
+          git push -q --force-with-lease=ci-screenshots:"$(git rev-parse FETCH_HEAD)" origin "$commit":refs/heads/ci-screenshots
+          echo "kept: $(ls -d pr-* 2>/dev/null | tr '\n' ' ')"
