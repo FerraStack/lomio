@@ -8,7 +8,10 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -23,6 +26,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.lomio.AppContainer
 import dev.lomio.BuildConfig
+import dev.lomio.domain.Fit
+import dev.lomio.engine.PendingLoad
+import dev.lomio.ui.components.Format
 import dev.lomio.ui.about.AboutScreen
 import dev.lomio.ui.bench.BenchmarkScreen
 import dev.lomio.ui.chat.ChatActions
@@ -82,6 +88,14 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
   }
 
   val chatState by chatVm.state.collectAsStateWithLifecycle()
+  val pendingLoad by container.modelManager.pendingConfirmation.collectAsStateWithLifecycle()
+  pendingLoad?.let { p ->
+    MemoryWarningDialog(
+      p,
+      onConfirm = { scope.launch { container.modelManager.confirmPending() } },
+      onDismiss = container.modelManager::dismissPending,
+    )
+  }
   val settings by settingsVm.settings.collectAsStateWithLifecycle()
 
   // Keep the screen awake while generating (RESEARCH.md §9.1).
@@ -165,6 +179,7 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
               onNewChat = { chatVm.open(null) },
               onDelete = { chatVm.delete {} },
               onDismissCrash = chatVm::dismissCrash,
+              onDismissLoadError = chatVm::dismissLoadError,
               onErrorShown = chatVm::errorShown,
             ),
         )
@@ -183,6 +198,12 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
               onOpenRepo = { repo ->
                 modelsVm.openRepo(repo)
                 navigate(Screen.HF_SEARCH)
+              },
+              onDownloadRecommended = {
+                if (Build.VERSION.SDK_INT >= 33) {
+                  notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                modelsVm.downloadRecommended(it)
               },
               onImport = { importLauncher.launch(arrayOf("application/octet-stream", "*/*")) },
               onLoad = { modelsVm.load(it) },
@@ -224,6 +245,26 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
       Screen.ABOUT -> AboutScreen(BuildConfig.VERSION_NAME, onOpenDrawer = { openDrawer() })
     }
   }
+}
+
+/** Confirmation before loading a model that is tight on, or over, the memory budget. */
+@Composable
+fun MemoryWarningDialog(p: PendingLoad, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+  val need = Format.bytes(p.estimate.totalBytes)
+  val avail = Format.bytes(p.memory.availableBytes)
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text(if (p.fit == Fit.WONT_FIT) "Probably won't fit in memory" else "Tight on memory") },
+    text = {
+      Text(
+        "${p.modelName} needs about $need; about $avail is available. " +
+          if (p.fit == Fit.WONT_FIT) "Android will likely close the app while loading. Try a smaller model or context size."
+          else "Other apps may be closed, or Lomio may be stopped, while it runs."
+      )
+    },
+    confirmButton = { TextButton(onClick = onConfirm) { Text("Load anyway") } },
+    dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+  )
 }
 
 private fun copy(context: Context, text: String) {

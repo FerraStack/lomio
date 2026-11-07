@@ -12,7 +12,6 @@ import dev.lomio.domain.MemoryFit
 import dev.lomio.domain.ModelShape
 import dev.lomio.engine.LoadOutcome
 import dev.lomio.llama.EngineState
-import dev.lomio.ui.components.Format
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -25,13 +24,36 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/**
+ * Our own small starter list (RESEARCH.md §2.2: PocketPal's device-rules repo has no license).
+ * Q4_0 for ≥ 3B models (repacked for ARM dotprod/i8mm), Q4_K_M below. Sizes and sha256 are the
+ * Hugging Face LFS values; the download is verified against them.
+ */
 val RECOMMENDED =
   listOf(
-    RecommendedModel("ggml-org/gemma-3-1b-it-GGUF", "Gemma 3 1B", "Small and fast; good for 4–6 GB phones."),
-    RecommendedModel("unsloth/Qwen3-1.7B-GGUF", "Qwen3 1.7B", "Reasoning model with a Think switch."),
-    RecommendedModel("bartowski/Llama-3.2-3B-Instruct-GGUF", "Llama 3.2 3B", "Solid all-rounder for 8 GB phones."),
-    RecommendedModel("unsloth/gemma-3-4b-it-GGUF", "Gemma 3 4B", "Best quality here; needs 8 GB+ RAM."),
+    RecommendedModel(
+      "ggml-org/gemma-3-1b-it-GGUF", "gemma-3-1b-it-Q4_K_M.gguf", "Gemma 3 1B",
+      "Small and fast; good for 4–6 GB phones.", "Q4_K_M", 806_058_240,
+      "8ccc5cd1f1b3602548715ae25a66ed73fd5dc68a210412eea643eb20eb75a135",
+    ),
+    RecommendedModel(
+      "unsloth/Qwen3-1.7B-GGUF", "Qwen3-1.7B-Q4_K_M.gguf", "Qwen3 1.7B",
+      "Reasoning model with a Think switch.", "Q4_K_M", 1_107_409_472,
+      "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897",
+    ),
+    RecommendedModel(
+      "bartowski/Llama-3.2-3B-Instruct-GGUF", "Llama-3.2-3B-Instruct-Q4_0.gguf", "Llama 3.2 3B",
+      "Solid all-rounder for 8 GB phones.", "Q4_0", 1_921_909_280,
+      "4d491003bf6b470e4d04233824c5c939b76d6c81974ba17a3ff207343e1d8e85",
+    ),
+    RecommendedModel(
+      "unsloth/gemma-3-4b-it-GGUF", "gemma-3-4b-it-Q4_0.gguf", "Gemma 3 4B",
+      "Best quality here; needs 8 GB+ RAM.", "Q4_0", 2_370_065_536,
+      "a3aa2db653fc95923d76e5d9039861d56f10dfb3c906afe6bcf8f72340ef2cbf",
+    ),
   )
+
+fun RecommendedModel.toHfFile() = HfFile(repo, file, sizeBytes, sha256)
 
 @OptIn(FlowPreview::class)
 class ModelsViewModel(private val c: AppContainer) : ViewModel() {
@@ -69,19 +91,30 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
                   ),
               )
             },
-          recommended = RECOMMENDED,
+          recommended =
+            RECOMMENDED.map { r ->
+              RecommendedCardState(
+                model = r,
+                fit =
+                  MemoryFit.verdict(
+                    MemoryFit.estimate(ModelShape(r.sizeBytes, null, null, null, null), DEFAULT_CTX),
+                    mem.availableBytes,
+                    mem.totalBytes,
+                  ),
+                added = models.any { it.hfRepo == r.repo && it.hfFile == r.file },
+              )
+            },
           message = msg,
         )
       }
-      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ModelsUiState(recommended = RECOMMENDED))
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ModelsUiState())
 
   fun load(id: String) =
     viewModelScope.launch {
       when (val r = c.modelManager.load(id)) {
         is LoadOutcome.Loaded -> message.value = "Loaded ${r.info.description}"
         is LoadOutcome.Failed -> message.value = r.message
-        is LoadOutcome.WontFit ->
-          message.value = "Not enough memory (needs ~${Format.bytes(r.estimate.totalBytes)})"
+        is LoadOutcome.NeedsConfirmation -> Unit // app-wide confirmation dialog
       }
     }
 
@@ -177,11 +210,16 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
     return true
   }
 
+  fun downloadRecommended(r: RecommendedModel) = download(r.toHfFile())
+
   fun download(file: HfFile) =
     viewModelScope.launch {
-      c.models.download(file)
-      _hf.update { s -> s.copy(files = s.files.map { if (it.file == file) it.copy(alreadyAdded = true) else it }) }
-      message.value = "Downloading ${file.fileName}"
+      runCatching { c.models.download(file) }
+        .onSuccess {
+          _hf.update { s -> s.copy(files = s.files.map { if (it.file == file) it.copy(alreadyAdded = true) else it }) }
+          message.value = "Downloading ${file.fileName}"
+        }
+        .onFailure { message.value = it.message ?: "Download failed" }
     }
 
   companion object {

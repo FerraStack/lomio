@@ -102,6 +102,9 @@ fun SettingsScreen(
       SwitchRow("Load last model on launch", "Skipped automatically if the last load crashed", settings.autoLoadLastModel) { v ->
         onChange { it.copy(autoLoadLastModel = v) }
       }
+      SliderRow("Unload after minutes in background (0 = never)", settings.unloadAfterMinutes.toFloat(), 0f..60f, 11, "%.0f") { v ->
+        onChange { it.copy(unloadAfterMinutes = (v / 5).roundToInt() * 5) }
+      }
       LoadControls(settings.load) { l -> onChange { it.copy(load = l) } }
 
       Section("Downloads")

@@ -16,7 +16,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Search
@@ -75,11 +77,22 @@ data class ModelCardState(
     get() = if (sizeBytes > 0) (bytesDone.toFloat() / sizeBytes).coerceIn(0f, 1f) else 0f
 }
 
-data class RecommendedModel(val repo: String, val title: String, val note: String)
+/** A curated starter model with one concrete file, so it downloads with one tap. */
+data class RecommendedModel(
+  val repo: String,
+  val file: String,
+  val title: String,
+  val note: String,
+  val quant: String,
+  val sizeBytes: Long,
+  val sha256: String,
+)
+
+data class RecommendedCardState(val model: RecommendedModel, val fit: Fit?, val added: Boolean)
 
 data class ModelsUiState(
   val models: List<ModelCardState> = emptyList(),
-  val recommended: List<RecommendedModel> = emptyList(),
+  val recommended: List<RecommendedCardState> = emptyList(),
   val message: String? = null,
 )
 
@@ -87,6 +100,7 @@ class ModelsActions(
   val onOpenDrawer: () -> Unit = {},
   val onSearchHf: () -> Unit = {},
   val onOpenRepo: (String) -> Unit = {},
+  val onDownloadRecommended: (RecommendedModel) -> Unit = {},
   val onImport: () -> Unit = {},
   val onLoad: (String) -> Unit = {},
   val onUnload: () -> Unit = {},
@@ -157,17 +171,61 @@ fun ModelsScreen(state: ModelsUiState, actions: ModelsActions, modifier: Modifie
       items(state.models, key = { it.id }) { ModelCard(it, actions) }
       if (state.recommended.isNotEmpty()) {
         item { SectionTitle("Recommended to start") }
-        items(state.recommended, key = { it.repo }) { r ->
-          OutlinedCard(Modifier.fillMaxWidth().clickable { actions.onOpenRepo(r.repo) }) {
-            Column(Modifier.padding(16.dp)) {
-              Text(r.title, style = MaterialTheme.typography.titleMedium)
-              Text(r.repo, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-              Text(r.note, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
-            }
+        items(state.recommended, key = { it.model.repo }) { RecommendedCard(it, actions) }
+      }
+    }
+  }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RecommendedCard(card: RecommendedCardState, actions: ModelsActions) {
+  val r = card.model
+  OutlinedCard(Modifier.fillMaxWidth().clickable { actions.onOpenRepo(r.repo) }) {
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Column {
+        Text(r.title, style = MaterialTheme.typography.titleMedium)
+        Text(r.repo, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+      }
+      Text(r.note, style = MaterialTheme.typography.bodyMedium)
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(r.quant, Format.bytes(r.sizeBytes)).forEach {
+          AssistChip(onClick = {}, label = { Text(it, style = MaterialTheme.typography.labelSmall) })
+        }
+      }
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        FitHint(card.fit, Modifier.weight(1f))
+        if (card.added) {
+          OutlinedButton(onClick = {}, enabled = false) { Text("Added") }
+        } else {
+          Button(onClick = { actions.onDownloadRecommended(r) }) {
+            Icon(Icons.Outlined.Download, null, Modifier.size(18.dp))
+            Spacer(Modifier.size(8.dp))
+            Text("Download")
           }
         }
       }
     }
+  }
+}
+
+/** "Fits your device" / "Tight on memory" / "May not fit" from the memory estimate. */
+@Composable
+fun FitHint(fit: Fit?, modifier: Modifier = Modifier) {
+  if (fit == null) {
+    Spacer(modifier)
+    return
+  }
+  val (text, color, icon) =
+    when (fit) {
+      Fit.FITS -> Triple("Fits your device", MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
+      Fit.TIGHT -> Triple("Tight on memory", MaterialTheme.colorScheme.tertiary, Icons.Outlined.WarningAmber)
+      Fit.WONT_FIT -> Triple("May not fit in memory", MaterialTheme.colorScheme.error, Icons.Outlined.WarningAmber)
+    }
+  Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+    Icon(icon, null, Modifier.size(16.dp), tint = color)
+    Spacer(Modifier.size(6.dp))
+    Text(text, style = MaterialTheme.typography.labelMedium, color = color)
   }
 }
 
@@ -190,17 +248,7 @@ fun ModelCard(m: ModelCardState, actions: ModelsActions) {
         listOfNotNull(Format.params(m.params), m.quant, Format.bytes(m.sizeBytes), Format.context(m.contextLength)?.let { "$it ctx" })
           .forEach { AssistChip(onClick = {}, label = { Text(it, style = MaterialTheme.typography.labelSmall) }) }
       }
-      if (m.fit == Fit.WONT_FIT || m.fit == Fit.TIGHT) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          Icon(Icons.Outlined.WarningAmber, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
-          Spacer(Modifier.size(6.dp))
-          Text(
-            if (m.fit == Fit.WONT_FIT) "May not fit in memory" else "Tight on memory",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.error,
-          )
-        }
-      }
+      if (m.fit == Fit.WONT_FIT || m.fit == Fit.TIGHT) FitHint(m.fit)
       when (m.state) {
         ModelState.DOWNLOADING, ModelState.PAUSED -> {
           LinearProgressIndicator(progress = { m.progress }, modifier = Modifier.fillMaxWidth())

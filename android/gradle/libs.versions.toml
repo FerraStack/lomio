@@ -26,6 +26,8 @@ robolectric = "4.17"
 roborazzi = "1.77.0"
 androidxTestCore = "1.7.0"
 androidxTestExt = "1.3.0"
+androidxTestRunner = "1.7.0"
+highlights = "1.1.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
@@ -65,6 +67,8 @@ androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-mani
 roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version.ref = "roborazzi" }
 roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version.ref = "roborazzi" }
 roborazzi-junit-rule = { module = "io.github.takahirom.roborazzi:roborazzi-junit-rule", version.ref = "roborazzi" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
+highlights = { module = "dev.snipme:highlights", version.ref = "highlights" }
 androidx-test-ext-junit = { module = "androidx.test.ext:junit-ktx", version.ref = "androidxTestExt" }
 
 [plugins]

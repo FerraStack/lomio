@@ -17,6 +17,7 @@ android {
     targetSdk = libs.versions.targetSdk.get().toInt()
     versionCode = 1
     versionName = "0.1.0"
+    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
   buildTypes {
@@ -82,6 +83,7 @@ dependencies {
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.markdown.m3)
   implementation(libs.markdown.code)
+  implementation(libs.highlights)
 
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
@@ -96,4 +98,12 @@ dependencies {
   testImplementation(libs.roborazzi)
   testImplementation(libs.roborazzi.compose)
   testImplementation(libs.roborazzi.junit.rule)
+
+  // End-to-end test on an emulator with a real (tiny) GGUF; see scripts/ci/emulator-e2e.sh.
+  androidTestImplementation(platform(libs.androidx.compose.bom))
+  androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+  androidTestImplementation(libs.androidx.test.runner)
+  androidTestImplementation(libs.androidx.test.core)
+  androidTestImplementation(libs.androidx.test.ext.junit)
+  androidTestImplementation(libs.kotlinx.coroutines.test)
 }

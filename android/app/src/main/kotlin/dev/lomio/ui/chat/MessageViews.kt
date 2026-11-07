@@ -46,6 +46,13 @@ import androidx.compose.ui.unit.dp
 import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeBlock
 import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeFence
 import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownColor
+import com.mikepenz.markdown.m3.markdownTypography
+import dev.lomio.ui.components.CodePalette
+import dev.snipme.highlights.Highlights
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.font.FontFamily
 import com.mikepenz.markdown.model.rememberMarkdownState
 import com.mikepenz.markdown.compose.components.markdownComponents
 import dev.lomio.data.db.MessageStatus
@@ -129,9 +136,28 @@ fun AssistantMessage(
 fun MarkdownText(content: String, modifier: Modifier = Modifier) {
   // retainState avoids flashing back to "loading" on every streamed update.
   val state = rememberMarkdownState(content, retainState = true)
+  val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+  val palette = CodePalette.forDarkTheme(dark)
+  val type = MaterialTheme.typography
   Markdown(
     markdownState = state,
     modifier = modifier.fillMaxWidth(),
+    colors =
+      markdownColor(
+        codeBackground = Color(0xFF000000.toInt() or palette.background),
+        inlineCodeBackground = MaterialTheme.colorScheme.surfaceContainerHigh,
+      ),
+    typography =
+      markdownTypography(
+        // Chat-sized headings: the library defaults to display styles.
+        h1 = type.titleLarge,
+        h2 = type.titleMedium,
+        h3 = type.titleSmall,
+        h4 = type.titleSmall,
+        h5 = type.labelLarge,
+        h6 = type.labelLarge,
+        code = type.bodyMedium.copy(fontFamily = FontFamily.Monospace, color = Color(0xFF000000.toInt() or palette.plain)),
+      ),
     components =
       markdownComponents(
         codeFence = {
@@ -139,6 +165,8 @@ fun MarkdownText(content: String, modifier: Modifier = Modifier) {
             content = it.content,
             node = it.node,
             style = it.typography.code,
+            // One builder per block: Highlights.Builder is mutable and blocks highlight in parallel.
+            highlightsBuilder = remember(palette) { Highlights.Builder().theme(palette.syntaxTheme()) },
             showHeader = true,
           )
         },
@@ -147,6 +175,8 @@ fun MarkdownText(content: String, modifier: Modifier = Modifier) {
             content = it.content,
             node = it.node,
             style = it.typography.code,
+            // One builder per block: Highlights.Builder is mutable and blocks highlight in parallel.
+            highlightsBuilder = remember(palette) { Highlights.Builder().theme(palette.syntaxTheme()) },
             showHeader = true,
           )
         },

@@ -7,7 +7,6 @@ import dev.lomio.data.db.ModelState
 import dev.lomio.domain.ChatReducer
 import dev.lomio.engine.LoadOutcome
 import dev.lomio.llama.EngineState
-import dev.lomio.ui.components.Format
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,6 +22,9 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
   private val conversationId = MutableStateFlow<String?>(null)
   private val thinking = MutableStateFlow(true)
   private val localError = MutableStateFlow<String?>(null)
+  private val loadError = MutableStateFlow<String?>(null)
+  private val dismissedFailure = MutableStateFlow<EngineState.Failed?>(null)
+  private val local = combine(thinking, localError, loadError, dismissedFailure, ::Local)
 
   private val conversation =
     conversationId.flatMapLatest { id -> if (id == null) flowOf(null) else c.chats.observeConversation(id) }
@@ -41,8 +43,8 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
         c.chatService.state,
         modelBits,
         c.settings.settings,
-        combine(thinking, localError, ::Pair),
-      ) { (id, conv, msgs), gen, bits, settings, (think, err) ->
+        local,
+      ) { (id, conv, msgs), gen, bits, settings, (think, err, loadErr, dismissed) ->
         val ready = bits.models.filter { it.state == ModelState.READY }
         val active = ready.firstOrNull { it.id == bits.activeId }
         val status =
@@ -72,6 +74,12 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
           thinkingEnabled = think,
           systemPrompt = conv?.systemPrompt,
           crashedModelName = bits.crashedId?.let { cid -> bits.models.firstOrNull { it.id == cid }?.displayName ?: "the last model" },
+          loadError =
+            loadErr
+              ?: (bits.engine as? EngineState.Failed)?.takeIf { it != dismissed }?.let { f ->
+                val name = bits.models.firstOrNull { it.filePath == f.path }?.displayName ?: "the model"
+                "Couldn't load $name: ${f.message}"
+              },
           error = err ?: gen.error,
         )
       }
@@ -86,8 +94,11 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
     conversationId.value
       ?: c.chats.create(c.modelManager.activeModelId.value).id.also { conversationId.value = it }
 
-  fun send(text: String) =
+  fun send(text: String) {
+    // Cheap synchronous checks first so a double tap can't create a second, empty chat.
+    if (text.isBlank() || c.chatService.isBusy) return
     viewModelScope.launch { c.chatService.send(ensureConversation(), text, thinking.value) }
+  }
 
   fun edit(messageId: String, text: String) {
     val id = conversationId.value ?: return
@@ -108,13 +119,12 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
   fun loadModel(id: String) =
     viewModelScope.launch {
       if (c.chatService.state.value.isGenerating) c.chatService.stop()
+      loadError.value = null
       when (val r = c.modelManager.load(id)) {
         is LoadOutcome.Loaded -> Unit
-        is LoadOutcome.Failed -> localError.value = r.message
-        is LoadOutcome.WontFit ->
-          localError.value =
-            "Not enough memory: needs ~${Format.bytes(r.estimate.totalBytes)}, " +
-              "${Format.bytes(r.memory.availableBytes)} available. Try a smaller context or model."
+        // Memory warning: the app-wide confirmation dialog takes over.
+        is LoadOutcome.NeedsConfirmation -> Unit
+        is LoadOutcome.Failed -> loadError.value = "Couldn't load the model: ${r.message}"
       }
     }
 
@@ -132,10 +142,22 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
 
   fun dismissCrash() = c.modelManager.dismissCrashNotice()
 
+  fun dismissLoadError() {
+    loadError.value = null
+    dismissedFailure.value = c.modelManager.engineState.value as? EngineState.Failed
+  }
+
   fun errorShown() {
     localError.value = null
     c.chatService.errorShown()
   }
+
+  private data class Local(
+    val thinking: Boolean,
+    val error: String?,
+    val loadError: String?,
+    val dismissed: EngineState.Failed?,
+  )
 
   private data class ModelBits(
     val models: List<dev.lomio.data.db.ModelEntity>,

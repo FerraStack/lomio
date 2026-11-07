@@ -98,6 +98,8 @@ data class ChatUiState(
   val thinkingEnabled: Boolean = true,
   val systemPrompt: String? = null,
   val crashedModelName: String? = null,
+  /** Why the last model load failed (shown as a banner until dismissed). */
+  val loadError: String? = null,
   val error: String? = null,
 )
 
@@ -116,6 +118,7 @@ class ChatActions(
   val onNewChat: () -> Unit = {},
   val onDelete: () -> Unit = {},
   val onDismissCrash: () -> Unit = {},
+  val onDismissLoadError: () -> Unit = {},
   val onErrorShown: () -> Unit = {},
 )
 
@@ -179,7 +182,15 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
     },
   ) { padding ->
     Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
-      state.crashedModelName?.let { CrashBanner(it, actions.onDismissCrash) }
+      state.crashedModelName?.let {
+        WarningBanner(
+          "Loading $it crashed last time, so it wasn't loaded automatically. Try a smaller context size or model.",
+          actions.onDismissCrash,
+        )
+      }
+      state.loadError?.let {
+        WarningBanner(it, actions.onDismissLoadError, actionLabel = "Choose model", onAction = { showPicker = true })
+      }
       Box(Modifier.weight(1f).fillMaxWidth()) {
         when {
           state.messages.isEmpty() && state.modelStatus == ModelStatus.LOADING ->
@@ -193,7 +204,7 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
               }
             }
           state.messages.isEmpty() && state.modelStatus != ModelStatus.LOADED ->
-            EmptyState(title = "Load a model to chat") {
+            EmptyState(title = if (state.modelStatus == ModelStatus.FAILED) "Model failed to load" else "Load a model to chat") {
               state.lastModel?.let { m ->
                 Button(onClick = { actions.onLoadModel(m.id) }) { Text("Load ${m.name}") }
               }
@@ -221,8 +232,6 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
         supportsThinking = state.supportsThinking,
         thinkingEnabled = state.thinkingEnabled,
         onToggleThinking = actions.onToggleThinking,
-        modelLabel = state.modelName ?: "Model",
-        onPickModel = { showPicker = true },
         onSend = {
           val id = editingId
           if (id != null) actions.onEdit(id, input) else actions.onSend(input)
@@ -324,39 +333,33 @@ private fun Composer(
   supportsThinking: Boolean,
   thinkingEnabled: Boolean,
   onToggleThinking: () -> Unit,
-  modelLabel: String,
-  onPickModel: () -> Unit,
   onSend: () -> Unit,
   onStop: () -> Unit,
 ) {
   Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
     Column(Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+      // The model is picked from the top bar only; the composer row holds per-message toggles.
+      if (supportsThinking) {
         FilterChip(
-          selected = false,
-          onClick = onPickModel,
-          label = { Text(modelLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-          trailingIcon = { Icon(Icons.Outlined.ExpandMore, null, Modifier.size(16.dp)) },
-          modifier = Modifier.weight(1f, fill = false),
+          selected = thinkingEnabled,
+          onClick = onToggleThinking,
+          label = { Text("Think") },
+          leadingIcon = { Icon(Icons.Outlined.Lightbulb, null, Modifier.size(16.dp)) },
         )
-        if (supportsThinking) {
-          FilterChip(
-            selected = thinkingEnabled,
-            onClick = onToggleThinking,
-            label = { Text("Think") },
-            leadingIcon = { Icon(Icons.Outlined.Lightbulb, null, Modifier.size(16.dp)) },
-          )
-        }
       }
       Row(verticalAlignment = Alignment.Bottom) {
         TextField(
           value = text,
           onValueChange = onTextChange,
           placeholder = { Text("Message") },
-          maxLines = 6,
+          minLines = 1,
+          maxLines = 6, // grows to ~6 lines, then scrolls
           shape = RoundedCornerShape(24.dp),
           colors =
             TextFieldDefaults.colors(
+              focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+              unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+              disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
               focusedIndicatorColor = Color.Transparent,
               unfocusedIndicatorColor = Color.Transparent,
               disabledIndicatorColor = Color.Transparent,
@@ -440,18 +443,28 @@ private fun StatusDot(status: ModelStatus) {
 }
 
 @Composable
-private fun CrashBanner(modelName: String, onDismiss: () -> Unit) {
+private fun WarningBanner(
+  text: String,
+  onDismiss: () -> Unit,
+  actionLabel: String? = null,
+  onAction: () -> Unit = {},
+) {
   Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
-    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-      Icon(Icons.Outlined.WarningAmber, null, tint = MaterialTheme.colorScheme.onErrorContainer)
-      Spacer(Modifier.size(12.dp))
-      Text(
-        "Loading $modelName crashed last time, so it wasn't loaded automatically. Try a smaller context size or model.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onErrorContainer,
-        modifier = Modifier.weight(1f),
-      )
-      TextButton(onClick = onDismiss) { Text("OK") }
+    Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)) {
+      Row(verticalAlignment = Alignment.Top) {
+        Icon(Icons.Outlined.WarningAmber, null, tint = MaterialTheme.colorScheme.onErrorContainer)
+        Spacer(Modifier.size(12.dp))
+        Text(
+          text,
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onErrorContainer,
+          modifier = Modifier.weight(1f),
+        )
+      }
+      Row(Modifier.align(Alignment.End)) {
+        if (actionLabel != null) TextButton(onClick = onAction) { Text(actionLabel) }
+        TextButton(onClick = onDismiss) { Text("Dismiss") }
+      }
     }
   }
 }
