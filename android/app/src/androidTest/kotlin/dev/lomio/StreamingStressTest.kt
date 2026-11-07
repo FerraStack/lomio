@@ -1,12 +1,13 @@
 package dev.lomio
 
 import android.os.ParcelFileDescriptor
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -66,7 +67,8 @@ class StreamingStressTest {
       repeat(ROUNDS) { round ->
         // A fresh chat each round keeps the prompt inside the 256-token context.
         compose.onNodeWithContentDescription("More").performClick()
-        compose.onNodeWithText("New chat").performClick()
+        // The overflow menu's item (the title and the drawer button also say "New chat").
+        compose.onNode(hasText("New chat") and hasAnyAncestor(isPopup())).performClick()
         compose.onNode(hasSetTextAction() and hasText("Message")).performTextInput("Once upon a time $round")
         compose.onNodeWithContentDescription("Send").performClick()
         compose.waitUntil(30_000) { c.chatService.state.value.isGenerating }
