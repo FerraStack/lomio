@@ -1,5 +1,7 @@
 package dev.lomio.ui.chat
 
+import dev.lomio.ui.assertMainThread
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -188,7 +190,11 @@ fun MarkdownText(content: String, modifier: Modifier = Modifier, streaming: Bool
 
   val incremental = remember { if (streaming) IncrementalMarkdown() else null }
   if (incremental != null) {
-    val snapshot = remember(content) { incremental.update(content) }
+    val snapshot =
+      remember(content) {
+        assertMainThread("Incremental Markdown parsing")
+        incremental.update(content)
+      }
     val placeholder = remember { State.Success(CompositeASTNode(MarkdownElementTypes.MARKDOWN_FILE, emptyList()), "", false) }
     Markdown(
       state = placeholder,
