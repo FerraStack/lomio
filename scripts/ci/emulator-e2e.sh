@@ -14,6 +14,9 @@ mkdir -p "$OUT"
 
 adb wait-for-device
 adb logcat -c || true
+# The emulator's own apps (Pixel Launcher) hit ANRs while llama.cpp keeps the CPU busy; their
+# "isn't responding" dialogs would cover the screenshots.
+adb shell settings put global hide_error_dialogs 1 || true
 adb install -r "$APK"
 adb install -r "$TEST_APK"
 

@@ -20,6 +20,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.test.espresso.Espresso
 import androidx.test.espresso.intent.Intents
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.isInternal
@@ -134,6 +135,13 @@ class VisionChatTest {
     compose.waitUntil(300_000) { c.modelManager.activeModelId.value != null }
     val info = (c.modelManager.engineState.value as EngineState.Loaded).info
     assertTrue("projector not loaded", info.supportsVision)
+    // The model sheet closes on pick; on a busy emulator it can linger, so make sure it's gone.
+    val sheetOpen = { compose.onAllNodesWithText("Choose a model").fetchSemanticsNodes().isNotEmpty() }
+    runCatching { compose.waitUntil(10_000) { !sheetOpen() } }
+    if (sheetOpen()) {
+      Espresso.pressBackUnconditionally()
+      compose.waitUntil(10_000) { !sheetOpen() }
+    }
 
     // Attach: the Photo Picker is another app, so answer its intent with our image.
     Intents.init()
