@@ -52,6 +52,7 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
             params.nBatch,
             params.nGpuLayers,
             params.useMmap,
+            params.chatTemplate?.takeIf { it.isNotBlank() }?.toByteArray(),
           )
         val info = readInfo(handle)
         loadedPath = path

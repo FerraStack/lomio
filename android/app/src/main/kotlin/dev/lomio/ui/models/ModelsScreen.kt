@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.Menu
@@ -108,6 +109,7 @@ class ModelsActions(
   val onDelete: (String) -> Unit = {},
   val onPause: (String) -> Unit = {},
   val onResume: (String) -> Unit = {},
+  val onSettings: (String) -> Unit = {},
   val onMessageShown: () -> Unit = {},
   val onStorage: () -> Unit = {},
 )
@@ -284,6 +286,7 @@ fun ModelCard(m: ModelCardState, actions: ModelsActions) {
               else -> Button(onClick = { actions.onLoad(m.id) }) { Text("Load") }
             }
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = { actions.onSettings(m.id) }) { Icon(Icons.Outlined.Tune, "Settings for ${m.name}") }
             IconButton(onClick = { actions.onDelete(m.id) }) { Icon(Icons.Outlined.Delete, "Delete ${m.name}") }
           }
         ModelState.REMOTE -> Unit

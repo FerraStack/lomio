@@ -1,6 +1,13 @@
 package dev.lomio.ui.chat
 
 import dev.lomio.ui.assertMainThread
+import kotlinx.coroutines.flow.map
+
+import dev.lomio.domain.SettingsResolver
+
+import dev.lomio.domain.SettingsJson
+
+import dev.lomio.domain.GenerationSettings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -34,10 +41,20 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
   private val dbMessages =
     conversationId.flatMapLatest { id -> if (id == null) flowOf(emptyList()) else c.chats.observeMessages(id) }
 
+  private val activeModelGen =
+    c.modelManager.activeModelId.flatMapLatest { id ->
+      if (id == null) flowOf(null) else c.models.observeSettings(id).map { SettingsJson.decodeGen(it?.genJson) }
+    }
+
   private val modelBits =
-    combine(c.models.observeModels(), c.modelManager.activeModelId, c.modelManager.engineState, c.modelManager.crashedModelId) {
-      models, activeId, engine, crashedId ->
-      ModelBits(models, activeId, engine, crashedId)
+    combine(
+      c.models.observeModels(),
+      c.modelManager.activeModelId,
+      c.modelManager.engineState,
+      c.modelManager.crashedModelId,
+      activeModelGen,
+    ) { models, activeId, engine, crashedId, modelGen ->
+      ModelBits(models, activeId, engine, crashedId, modelGen)
     }
 
   val state: StateFlow<ChatUiState> =
@@ -85,6 +102,8 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
                 "Couldn't load $name: ${f.message}"
               },
           error = err ?: gen.error,
+          genBase = SettingsResolver.chatBase(settings.generation, if (active != null) bits.modelGen else null),
+          gen = SettingsJson.decodeGen(conv?.genOverrideJson) ?: GenerationSettings(),
         )
       }
       .combine(scrollTarget) { s, target -> s.copy(scrollToMessageId = target) }
@@ -170,6 +189,25 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
       onDeleted()
     }
 
+  /** Per-chat sampler overrides; an empty set clears them. Creates the chat if needed. */
+  fun setGenerationOverride(g: GenerationSettings) =
+    viewModelScope.launch {
+      val id = ensureConversation()
+      c.chats.setGenerationOverride(id, g.takeIf { it != GenerationSettings() })
+    }
+
+  /** Moves this chat's overrides into the loaded model's defaults. */
+  fun saveGenerationAsModelDefault() =
+    viewModelScope.launch {
+      val modelId = c.modelManager.activeModelId.value ?: return@launch
+      val chatId = conversationId.value ?: return@launch
+      val own = SettingsJson.decodeGen(c.chats.conversation(chatId)?.genOverrideJson) ?: return@launch
+      val s = c.models.settings(modelId)
+      val merged = (SettingsJson.decodeGen(s?.genJson) ?: GenerationSettings()).overlay(own)
+      c.models.saveSettings(modelId, merged, SettingsJson.decodeLoad(s?.loadJson), s?.systemPrompt)
+      c.chats.setGenerationOverride(chatId, null)
+    }
+
   fun dismissCrash() = c.modelManager.dismissCrashNotice()
 
   fun dismissLoadError() {
@@ -194,5 +232,6 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
     val activeId: String?,
     val engine: EngineState,
     val crashedId: String?,
+    val modelGen: GenerationSettings?,
   )
 }

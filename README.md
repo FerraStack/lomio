@@ -34,9 +34,13 @@ stats line. arm64 phones are not tested yet:
   - Long chats keep their newest turns to fit the context.
   - Stop takes effect promptly, including during prompt processing, and keeps the part of the
     prompt that was already processed. Long prompts show a progress bar.
-- Settings and a local benchmark (pp/tg tokens per second).
+- Settings at three levels: global defaults, per model (name, system prompt, sampler, context
+  size, threads, batch size, mmap, and a chat template override from the GGUF / a preset / custom
+  Jinja with a live preview), and per chat (sampler overrides, system prompt). The most specific
+  level that sets a value wins.
+- A local benchmark (pp/tg tokens per second).
 
-Not done yet: per-model settings screen, chat export/import, the HF token in Keystore storage,
+Not done yet: chat export/import, the HF token in Keystore storage,
 split GGUF files, vision models, GPU backends, a tablet layout. Screenshots of every screen are
 posted by CI on each pull request; README screenshots are a TODO.
 

@@ -68,6 +68,14 @@ import dev.lomio.ui.search.SearchActions
 import dev.lomio.ui.search.SearchResult
 import dev.lomio.ui.search.SearchScreen
 import dev.lomio.ui.search.SearchUiState
+import androidx.compose.ui.test.performScrollTo
+import dev.lomio.domain.GenerationSettings
+import dev.lomio.domain.LoadSettings
+import dev.lomio.ui.models.ModelSettingsActions
+import dev.lomio.ui.models.ModelSettingsScreen
+import dev.lomio.ui.models.ModelSettingsUiState
+import dev.lomio.ui.models.TemplateMode
+import dev.lomio.ui.models.TemplatePreview
 
 /**
  * Roborazzi screenshots of the main screens with fake state (no native library, no DB).
@@ -466,6 +474,82 @@ class ScreenshotTest {
     shoot("drawer_search", dark = false) {
       DrawerContent(Destination.CHAT, "c1", "kyoto", history.take(1), DrawerActions())
     }
+
+  private val modelSettings =
+    ModelSettingsUiState(
+      modelId = "m1",
+      name = "Qwen3 1.7B",
+      subtitle = "Q4_K_M · 1.1 GB",
+      needsReload = true,
+      globalSystemPrompt = "You are a helpful assistant.",
+      genBase = dev.lomio.domain.SettingsResolver.modelBase(GenerationSettings(temperature = 0.7f)),
+      gen = GenerationSettings(temperature = 0.6f, topK = 20),
+      load = LoadSettings(nCtx = 8192),
+      trainedContext = 40960,
+      contextFit = Fit.FITS,
+      templateMode = TemplateMode.PRESET,
+      presetId = "chatml",
+      preview =
+        TemplatePreview.Rendered(
+          "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nHello!<|im_end|>\n" +
+            "<|im_start|>assistant\nHi! How can I help?<|im_end|>\n<|im_start|>user\nWhat is 2 + 2?<|im_end|>\n" +
+            "<|im_start|>assistant\n"
+        ),
+    )
+
+  @Test fun modelSettingsLight() = shoot("model_settings", dark = false) { ModelSettingsScreen(modelSettings, ModelSettingsActions()) }
+
+  @Test fun modelSettingsDark() = shoot("model_settings", dark = true) { ModelSettingsScreen(modelSettings, ModelSettingsActions()) }
+
+  /** Scrolled to the chat template section: a custom template that fails to render. */
+  private fun shootTemplate(dark: Boolean) {
+    val state =
+      modelSettings.copy(
+        needsReload = false,
+        templateMode = TemplateMode.CUSTOM,
+        customTemplate = "{%- for message in messages -%}\n{{ '<|' + message.role + '|>' + message.content }}\n{%- endfor %",
+        preview = TemplatePreview.Failed("expected '%}' at line 3"),
+      )
+    compose.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) {
+        LomioTheme(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColor = false) {
+          ModelSettingsScreen(state, ModelSettingsActions())
+        }
+      }
+    }
+    compose.onNodeWithText("Reset to defaults").performScrollTo()
+    compose.waitForIdle()
+    compose.onRoot().captureRoboImage("build/outputs/roborazzi/model_settings_template_${if (dark) "dark" else "light"}.png")
+  }
+
+  @Test fun modelSettingsTemplateLight() = shootTemplate(dark = false)
+
+  @Test fun modelSettingsTemplateDark() = shootTemplate(dark = true)
+
+  @OptIn(ExperimentalRoborazziApi::class)
+  private fun shootGenSheet(dark: Boolean) {
+    val state =
+      chat.copy(
+        isGenerating = false,
+        genBase = dev.lomio.domain.SettingsResolver.chatBase(GenerationSettings(), GenerationSettings(temperature = 0.6f)),
+        gen = GenerationSettings(temperature = 1.1f, maxTokens = 512),
+      )
+    compose.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) {
+        LomioTheme(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColor = false) {
+          ChatScreen(state, ChatActions())
+        }
+      }
+    }
+    compose.onNodeWithContentDescription("More").performClick()
+    compose.onNodeWithText("Generation settings (this chat)").performClick()
+    compose.waitForIdle()
+    captureScreenRoboImage("build/outputs/roborazzi/chat_gen_sheet_${if (dark) "dark" else "light"}.png")
+  }
+
+  @Test fun chatGenSheetLight() = shootGenSheet(dark = false)
+
+  @Test fun chatGenSheetDark() = shootGenSheet(dark = true)
 
   private val loadFailed =
     ChatUiState(

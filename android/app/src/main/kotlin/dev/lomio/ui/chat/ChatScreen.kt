@@ -76,6 +76,13 @@ import kotlinx.coroutines.delay
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetState
+import dev.lomio.ui.settings.OverridableGenerationControls
+import dev.lomio.domain.GenerationSettings
 import dev.lomio.ui.components.Format
 import kotlinx.coroutines.launch
 
@@ -108,6 +115,10 @@ data class ChatUiState(
   val error: String? = null,
   /** A message to scroll to and briefly highlight (opened from search). */
   val scrollToMessageId: String? = null,
+  /** What this chat inherits (global, then the loaded model's settings). */
+  val genBase: GenerationSettings = GenerationSettings.DEFAULTS,
+  /** This chat's own overrides. */
+  val gen: GenerationSettings = GenerationSettings(),
 )
 
 class ChatActions(
@@ -127,6 +138,9 @@ class ChatActions(
   val onToggleThinking: () -> Unit = {},
   val onRename: (String) -> Unit = {},
   val onSetSystemPrompt: (String) -> Unit = {},
+  val onSetGeneration: (GenerationSettings) -> Unit = {},
+  val onSaveGenerationAsModelDefault: () -> Unit = {},
+  val onOpenModelSettings: () -> Unit = {},
   val onNewChat: () -> Unit = {},
   val onDelete: () -> Unit = {},
   val onDismissCrash: () -> Unit = {},
@@ -140,7 +154,7 @@ class ChatActions(
 fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Modifier) {
   var showPicker by rememberSaveable { mutableStateOf(false) }
   var showMenu by remember { mutableStateOf(false) }
-  var dialog by rememberSaveable { mutableStateOf<String?>(null) } // "rename" | "system"
+  var dialog by rememberSaveable { mutableStateOf<String?>(null) } // "rename" | "system" | "gen"
   var input by rememberSaveable { mutableStateOf("") }
   var editingId by rememberSaveable { mutableStateOf<String?>(null) }
   var deleting by remember { mutableStateOf<UiMessage?>(null) }
@@ -185,7 +199,11 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
           Box {
             IconButton(onClick = { showMenu = true }) { Icon(Icons.Outlined.MoreVert, "More") }
             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+              DropdownMenuItem(text = { Text("Generation settings (this chat)") }, onClick = { showMenu = false; dialog = "gen" })
               DropdownMenuItem(text = { Text("System prompt (this chat)") }, onClick = { showMenu = false; dialog = "system" })
+              if (state.modelStatus == ModelStatus.LOADED) {
+                DropdownMenuItem(text = { Text("Model settings") }, onClick = { showMenu = false; actions.onOpenModelSettings() })
+              }
               DropdownMenuItem(text = { Text("Rename") }, onClick = { showMenu = false; dialog = "rename" })
               DropdownMenuItem(text = { Text("New chat") }, onClick = { showMenu = false; actions.onNewChat() })
               DropdownMenuItem(text = { Text("Delete") }, onClick = { showMenu = false; actions.onDelete() })
@@ -302,6 +320,16 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
     )
   }
   when (dialog) {
+    "gen" ->
+      ChatGenerationSheet(
+        state = state,
+        onChange = actions.onSetGeneration,
+        onSaveAsModelDefault = {
+          actions.onSaveGenerationAsModelDefault()
+          dialog = null
+        },
+        onDismiss = { dialog = null },
+      )
     "rename" ->
       TextInputDialog("Rename chat", state.title, singleLine = true, onDismiss = { dialog = null }) {
         actions.onRename(it)
@@ -459,6 +487,41 @@ private fun Composer(
           ) {
             Icon(Icons.AutoMirrored.Filled.Send, "Send")
           }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Generation settings for this chat (RESEARCH.md §9.1): each value inherits the model's (or
+ * global) setting until changed; "Save as model default" moves the overrides to the model.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChatGenerationSheet(
+  state: ChatUiState,
+  onChange: (GenerationSettings) -> Unit,
+  onSaveAsModelDefault: () -> Unit,
+  onDismiss: () -> Unit,
+  sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+) {
+  val inherited = if (state.modelName != null) "model" else "global"
+  ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+      Text("Generation settings", style = MaterialTheme.typography.titleMedium)
+      Text(
+        "For this chat only. Unchanged values follow the ${if (state.modelName != null) "settings of ${state.modelName}" else "global defaults"}.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+      )
+      OverridableGenerationControls(state.genBase, state.gen, inheritedFrom = inherited, onChange = onChange)
+      val customized = state.gen != GenerationSettings()
+      Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+        TextButton(onClick = { onChange(GenerationSettings()) }, enabled = customized) { Text("Reset to $inherited") }
+        if (state.modelName != null) {
+          FilledTonalButton(onClick = onSaveAsModelDefault, enabled = customized) { Text("Save as model default") }
         }
       }
     }
