@@ -22,6 +22,7 @@ class LomioApp : Application() {
     container.modelManager.onProcessStart()
     container.scope.launch {
       container.chats.recoverInterrupted()
+      container.settings.migrateSecrets()
       container.settings.settings.map { it.hfToken }.distinctUntilChanged().collect {
         container.setHfToken(it)
       }

@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Android 14+: downloads the user starts run as user-initiated data transfer jobs. -->
+    <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
 
     <application
         android:name=".LomioApp"
@@ -30,7 +32,16 @@
             </intent-filter>
         </activity>
 
-        <!-- WorkManager runs model downloads as a user-visible dataSync foreground job. -->
+        <service
+            android:name=".data.download.DownloadJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <receiver
+            android:name=".data.download.DownloadActionReceiver"
+            android:exported="false" />
+
+        <!-- Android 13 and older: WorkManager runs model downloads as a dataSync foreground job. -->
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"

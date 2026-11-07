@@ -21,7 +21,11 @@ stats line. arm64 phones are not tested yet:
 - Models:
   - Hugging Face search and one-tap starter models.
   - Downloads pinned to a commit, resumable with `If-Range`, checked against the file's sha256,
-    and retried on flaky networks; storage is checked first.
+    and retried on flaky networks; storage is checked first. At most two run at once, the rest
+    wait as Queued. On Android 14+ they run as user-initiated data transfer jobs (no 6 h
+    dataSync cap); older versions use a WorkManager foreground job.
+  - The Hugging Face token is stored encrypted (AES-GCM, key in the Android Keystore) and can be
+    checked with *Test token*.
   - Import of `.gguf` files.
   - A memory-fit check before each load that asks before loading a model that is tight on, or
     over, the memory budget.
@@ -40,7 +44,7 @@ stats line. arm64 phones are not tested yet:
   level that sets a value wins.
 - A local benchmark (pp/tg tokens per second).
 
-Not done yet: chat export/import, the HF token in Keystore storage,
+Not done yet: chat export/import,
 split GGUF files, vision models, GPU backends, a tablet layout. Screenshots of every screen are
 posted by CI on each pull request; README screenshots are a TODO.
 
@@ -81,7 +85,7 @@ How the parts work:
   never when WorkManager starts the process. The model is unloaded after a configurable time in
   the background.
 - **Storage.** Models live in `noBackupFilesDir`. Backup and device-transfer rules exclude the
-  models and the settings, which hold the HF token.
+  models and the settings; the HF token is stored only as Keystore-encrypted ciphertext.
 
 ## Building
 

@@ -76,6 +76,16 @@ object GgufNames {
  * Minimal Hugging Face Hub client: the three endpoints PocketPal uses (RESEARCH.md §6).
  * The bearer token is only ever sent to huggingface.co, never to a mirror.
  */
+/** Result of checking a Hugging Face token against `/api/whoami-v2`. */
+sealed interface TokenCheck {
+  data class Valid(val user: String) : TokenCheck
+
+  /** Hugging Face refused the token (HTTP 401/403). */
+  data class Rejected(val code: Int) : TokenCheck
+
+  data class Unreachable(val message: String) : TokenCheck
+}
+
 class HfClient(
   private val http: OkHttpClient,
   private val baseUrl: String = DEFAULT_BASE_URL,
@@ -151,6 +161,28 @@ class HfClient(
       .addPathSegments(path)
       .build()
       .toString()
+
+  /** Asks Hugging Face who [token] belongs to. Never throws. */
+  suspend fun checkToken(token: String): TokenCheck =
+    withContext(Dispatchers.IO) {
+      val url = base().newBuilder().addPathSegments("api/whoami-v2").build()
+      val req = Request.Builder().url(url).header("Authorization", "Bearer ${token.trim()}").build()
+      try {
+        http.newCall(req).execute().use { resp ->
+          when {
+            resp.code == 401 || resp.code == 403 -> TokenCheck.Rejected(resp.code)
+            !resp.isSuccessful -> TokenCheck.Unreachable("HTTP ${resp.code}")
+            else -> TokenCheck.Valid(json.decodeFromString<ApiWhoAmI>(resp.body.string()).name)
+          }
+        }
+      } catch (e: IOException) {
+        TokenCheck.Unreachable(e.message ?: e.javaClass.simpleName)
+      } catch (e: kotlinx.serialization.SerializationException) {
+        TokenCheck.Unreachable("unexpected reply")
+      }
+    }
+
+  @Serializable private data class ApiWhoAmI(val name: String)
 
   /** Headers for a download request to [url]; adds the token only for huggingface.co. */
   fun authHeaders(url: String, token: String? = this.token()): Map<String, String> {

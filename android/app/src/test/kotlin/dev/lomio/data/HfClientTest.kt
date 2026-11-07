@@ -6,6 +6,7 @@ import dev.lomio.data.hf.HfSort
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import dev.lomio.data.hf.TokenCheck
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import org.junit.After
@@ -118,5 +119,20 @@ class HfClientTest {
     assertEquals(1 to 3, GgufNames.splitPart("big-Q4_K_M-00001-of-00003.gguf"))
     assertNull(GgufNames.splitPart("small.gguf"))
     assertEquals("Qwen3 1.7B", GgufNames.displayName("Qwen3-1.7B-Q4_K_M.gguf"))
+  }
+
+  @Test
+  fun checkTokenReportsUserRejectionAndOutage() = runTest {
+    server.enqueue(MockResponse.Builder().body("""{"name":"lomio-dev","type":"user"}""").build())
+    assertEquals(TokenCheck.Valid("lomio-dev"), client().checkToken(" hf_abc "))
+    val req = server.takeRequest()
+    assertEquals("/api/whoami-v2", req.url.encodedPath)
+    assertEquals("Bearer hf_abc", req.headers["Authorization"])
+
+    server.enqueue(MockResponse.Builder().code(401).build())
+    assertEquals(TokenCheck.Rejected(401), client().checkToken("bad"))
+
+    server.enqueue(MockResponse.Builder().code(503).build())
+    assertTrue(client().checkToken("x") is TokenCheck.Unreachable)
   }
 }
