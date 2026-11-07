@@ -39,7 +39,7 @@ adb shell am instrument -w -r \
   dev.lomio.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/instrumentation.txt"
 set -e
 
-for shot in e2e_1_loading e2e_2_streaming e2e_3_finished e2e_4_storage e2e_5_storage_cleaned e2e_vision_1_attached e2e_vision_2_sent e2e_vision_3_answer; do
+for shot in e2e_1_loading e2e_2_streaming e2e_3_finished e2e_4_storage e2e_5_storage_cleaned e2e_vision_1_attached e2e_vision_2_sent e2e_vision_3_answer e2e_gpu_1_notice e2e_gpu_2_benchmark; do
   adb pull "/data/local/tmp/e2e/$shot.png" "$OUT/$shot.png" || echo "missing screenshot: $shot"
 done
 

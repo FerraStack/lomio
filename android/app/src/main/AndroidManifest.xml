@@ -22,6 +22,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Lomio"
         tools:targetApi="36">
+        <!-- Experimental GPU backend: the vendor OpenCL driver (Adreno), if the device has one. -->
+        <uses-native-library
+            android:name="libOpenCL.so"
+            android:required="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

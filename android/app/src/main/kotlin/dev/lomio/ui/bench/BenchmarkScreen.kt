@@ -39,6 +39,10 @@ data class BenchUiState(
   val result: BenchResult? = null,
   val error: String? = null,
   val systemInfo: String? = null,
+  /** Where the loaded model runs (ModelInfo.backend), e.g. "CPU". */
+  val backend: String? = null,
+  /** Why the model is on the CPU although GPU acceleration is on. */
+  val gpuNote: String? = null,
 )
 
 /** Local llama-bench style benchmark (RESEARCH.md §9.4); no leaderboard. */
@@ -68,6 +72,10 @@ fun BenchmarkScreen(
         state.modelName?.let { "Model: $it" } ?: "Load a model first (Models screen).",
         style = MaterialTheme.typography.bodyLarge,
       )
+      state.backend?.let { Text("Runs on: $it", style = MaterialTheme.typography.bodyMedium) }
+      state.gpuNote?.let {
+        Text("GPU not used: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+      }
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         BenchProfile.entries.forEach { p ->
           FilterChip(selected = p == state.profile, onClick = { onProfile(p) }, label = { Text(p.label) })

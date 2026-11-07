@@ -31,6 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import dev.lomio.AppContainer
 import dev.lomio.BuildConfig
 import dev.lomio.domain.Fit
+import dev.lomio.domain.GpuSupport
 import dev.lomio.engine.PendingLoad
 import dev.lomio.ui.components.Format
 import dev.lomio.ui.about.AboutScreen
@@ -212,6 +213,7 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
               onNewChat = { chatVm.open(null) },
               onDelete = { chatVm.delete {} },
               onDismissCrash = chatVm::dismissCrash,
+              onDismissGpuNotice = chatVm::dismissGpuNotice,
               onDismissLoadError = chatVm::dismissLoadError,
               onErrorShown = chatVm::errorShown,
               onScrolledToMessage = chatVm::scrolledToMessage,
@@ -315,6 +317,7 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
             onOpenDrawer = { openDrawer() },
             tokenCheck = tokenCheck,
             onTestToken = { settingsVm.testToken() },
+            gpu = remember { GpuSupport.detect() },
           )
         }
       Screen.BENCHMARK -> {

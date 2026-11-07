@@ -59,8 +59,15 @@ jobs:
 
       - name: Check native libraries in the APK
         run: |
-          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep '\.so$'
-          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -q 'lib/arm64-v8a/liblomio_jni.so'
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          unzip -l $apk | grep '\.so$'
+          unzip -l $apk | grep -q 'lib/arm64-v8a/liblomio_jni.so'
+          # The OpenCL stub is link-time only; the device's driver must be the one loaded.
+          if unzip -l $apk | grep -q 'libOpenCL\.so'; then echo "::error::libOpenCL.so stub packaged"; exit 1; fi
+          echo "APK size: $(stat -c %s $apk) bytes"
+          for abi in arm64-v8a x86_64; do
+            echo "native libs $abi (uncompressed): $(unzip -l $apk "lib/$abi/*" | tail -1 | awk '{print $1}') bytes"
+          done
 
       - name: Collect APKs
         run: |

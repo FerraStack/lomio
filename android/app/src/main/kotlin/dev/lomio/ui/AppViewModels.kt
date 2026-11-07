@@ -79,7 +79,7 @@ class BenchViewModel(private val c: AppContainer) : ViewModel() {
   val state: StateFlow<BenchUiState> =
     combine(local, c.modelManager.engineState) { s, engine ->
         val info = (engine as? EngineState.Loaded)?.info ?: (engine as? EngineState.Generating)?.info
-        s.copy(modelName = info?.description)
+        s.copy(modelName = info?.description, backend = info?.backend, gpuNote = info?.gpuNote)
       }
       .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BenchUiState())
 

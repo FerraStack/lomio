@@ -42,6 +42,8 @@ android {
     // llama.cpp CPU variants are dlopen()ed from nativeLibraryDir at runtime, so they must
     // be extracted to disk instead of being mmapped from the APK.
     jniLibs.useLegacyPackaging = true
+    // The OpenCL stub the GPU backend links against must never ship: the vendor's is used.
+    jniLibs.excludes += "**/libOpenCL.so"
     resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
   }
 

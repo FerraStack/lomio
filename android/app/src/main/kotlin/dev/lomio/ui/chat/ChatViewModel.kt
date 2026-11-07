@@ -60,9 +60,9 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
       c.modelManager.activeModelId,
       c.modelManager.engineState,
       c.modelManager.crashedModelId,
-      activeModelGen,
-    ) { models, activeId, engine, crashedId, modelGen ->
-      ModelBits(models, activeId, engine, crashedId, modelGen)
+      combine(activeModelGen, c.modelManager.gpuNotice, ::Pair),
+    ) { models, activeId, engine, crashedId, (modelGen, gpuNotice) ->
+      ModelBits(models, activeId, engine, crashedId, modelGen, gpuNotice)
     }
 
   val state: StateFlow<ChatUiState> =
@@ -106,6 +106,7 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
           attachments = pendingImages.map(c.chats.attachmentPath),
           thinkingEnabled = think,
           systemPrompt = conv?.systemPrompt,
+          gpuNotice = bits.gpuNotice,
           crashedModelName = bits.crashedId?.let { cid -> bits.models.firstOrNull { it.id == cid }?.displayName ?: "the last model" },
           loadError =
             loadErr
@@ -239,6 +240,8 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
 
   fun dismissCrash() = c.modelManager.dismissCrashNotice()
 
+  fun dismissGpuNotice() = c.modelManager.dismissGpuNotice()
+
   fun dismissLoadError() {
     loadError.value = null
     dismissedFailure.value = c.modelManager.engineState.value as? EngineState.Failed
@@ -267,5 +270,6 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
     val engine: EngineState,
     val crashedId: String?,
     val modelGen: GenerationSettings?,
+    val gpuNotice: String?,
   )
 }

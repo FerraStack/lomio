@@ -90,6 +90,11 @@ struct Session {
     std::vector<llama_pos>    cached_pos;
     llama_pos                 n_past = 0;
 
+    // Where the weights run, e.g. "CPU" or "GPU (OpenCL): QUALCOMM Adreno(TM) 750 · 28/28 layers",
+    // and why the GPU wasn't used when it was asked for (empty otherwise).
+    std::string backend = "CPU";
+    std::string gpu_note;
+
     // Decoded images of the last turn, keyed by file path (re-tokenizing a chat re-uses them).
     std::map<std::string, mtmd::bitmap_ptr> bitmaps;
 
@@ -469,6 +474,107 @@ jbyteArray read_gguf_str(JNIEnv * env, const gguf_context * g, const std::string
     return string_to_bytes(env, gguf_get_val_str(g, id));
 }
 
+// ---------------------------------------------------------------------------
+// GPU (experimental): the OpenCL backend is loaded only when a load asks for GPU layers, so a
+// device whose driver misbehaves is never touched unless the user turned GPU acceleration on.
+// Engine thread only.
+// ---------------------------------------------------------------------------
+
+std::string g_lib_dir;            // nativeLibraryDir, set by nativeInit
+#ifdef LOMIO_HAS_OPENCL
+ggml_backend_reg_t g_gpu_reg = nullptr;
+std::string g_gpu_error;          // sticky: why the GPU backend can't be loaded
+#endif
+
+// The GPU device to offload to, or null with `why` set.
+ggml_backend_dev_t gpu_device(std::string & why) {
+#ifndef LOMIO_HAS_OPENCL
+    why = "this build has no GPU backend for this CPU architecture";
+    return nullptr;
+#else
+    if (g_gpu_reg == nullptr && g_gpu_error.empty()) {
+        const std::string lib = g_lib_dir + "/liblomio-opencl.so";
+        const int64_t t0 = now_us();
+        g_gpu_reg = ggml_backend_load(lib.c_str());
+        if (g_gpu_reg == nullptr) g_gpu_error = "OpenCL isn't available on this device";
+        LOGI("OpenCL backend %s in %lld ms", g_gpu_reg ? "loaded" : "unavailable",
+             static_cast<long long>((now_us() - t0) / 1000));
+    }
+    if (g_gpu_reg == nullptr) {
+        why = g_gpu_error;
+        return nullptr;
+    }
+    for (size_t i = 0; i < ggml_backend_reg_dev_count(g_gpu_reg); ++i) {
+        ggml_backend_dev_t d = ggml_backend_reg_dev_get(g_gpu_reg, i);
+        if (ggml_backend_dev_type(d) == GGML_BACKEND_DEVICE_TYPE_GPU) return d;
+    }
+    why = "no supported OpenCL GPU found";
+    return nullptr;
+#endif
+}
+
+struct LoadSpec {
+    std::string path;
+    int  n_ctx;
+    int  n_threads;
+    int  n_batch;
+    bool use_mmap;
+    bool vision;
+};
+
+// Loads weights + context and runs the warm-up decode. gpu == null: CPU only (no device is
+// offered to llama.cpp at all, not even for op offload). Throws JniError on failure.
+void open_model(Session * s, const LoadSpec & spec, ggml_backend_dev_t gpu, int n_gpu_layers) {
+    std::vector<ggml_backend_dev_t> devices;
+    if (gpu != nullptr) devices.push_back(gpu);
+    devices.push_back(nullptr);
+
+    llama_model_params mp = llama_model_default_params();
+    mp.devices = devices.data();
+    mp.n_gpu_layers = gpu != nullptr ? n_gpu_layers : 0;
+    mp.load_mode = spec.use_mmap ? LLAMA_LOAD_MODE_MMAP : LLAMA_LOAD_MODE_NONE;
+    s->model = llama_model_load_from_file(spec.path.c_str(), mp);
+    if (s->model == nullptr) throw JniError("failed to load model: " + spec.path);
+
+    llama_context_params cp = llama_context_default_params();
+    cp.n_ctx = spec.n_ctx > 0 ? static_cast<uint32_t>(spec.n_ctx) : 4096;
+    cp.n_batch = spec.n_batch > 0 ? static_cast<uint32_t>(spec.n_batch) : 512;
+    // Some projectors (e.g. Gemma 3) need all of an image's tokens in one micro-batch.
+    if (spec.vision) cp.n_batch = std::max<uint32_t>(cp.n_batch, 512);
+    cp.n_ubatch = std::min<uint32_t>(cp.n_batch, 512);
+    cp.n_threads = spec.n_threads;
+    cp.n_threads_batch = spec.n_threads;
+    cp.no_perf = false;
+    cp.offload_kqv = gpu != nullptr;
+    cp.op_offload = gpu != nullptr;
+    // Lets stop() interrupt a long prompt batch instead of waiting for it to finish.
+    cp.abort_callback = [](void *) -> bool { return is_cancelled(); };
+    cp.abort_callback_data = nullptr;
+    s->ctx = llama_init_from_model(s->model, cp);
+    if (s->ctx == nullptr) throw JniError("failed to create context (n_ctx=" + std::to_string(cp.n_ctx) + "); try a smaller context");
+
+    // Warm-up decode of one token: allocates compute buffers (and, on the GPU, builds the
+    // kernels) now, so a model that can't run fails (or crashes) inside load - where the
+    // crash-loop guard is armed - not on first chat.
+    const llama_vocab * vocab = llama_model_get_vocab(s->model);
+    llama_token tok = llama_vocab_bos(vocab);
+    if (tok < 0) tok = 0;
+    common_batch warm(s->ctx);
+    warm.add(tok, 0, 0, true);
+    const int wret = llama_process(s->ctx, LLAMA_PROCESS_TYPE_DECODE, warm.get());
+    llama_memory_clear(llama_get_memory(s->ctx), true);
+    if (wret != 0) throw JniError("warm-up decode failed (" + std::to_string(wret) + ")");
+
+    if (gpu != nullptr) {
+        const int n_layer = llama_model_n_layer(s->model);
+        const int on_gpu = n_gpu_layers < 0 ? n_layer : std::min(n_gpu_layers, n_layer);
+        s->backend = std::string("GPU (OpenCL): ") + ggml_backend_dev_description(gpu) + " · " +
+                     std::to_string(on_gpu) + "/" + std::to_string(n_layer) + " layers";
+    } else {
+        s->backend = "CPU";
+    }
+}
+
 std::string model_meta(const llama_model * model, const char * key) {
     char buf[256];
     const int32_t n = llama_model_meta_val_str(model, key, buf, sizeof(buf));
@@ -486,6 +592,7 @@ JNI_FN(void, nativeInit)(JNIEnv * env, jobject, jbyteArray jlib_dir) {
         llama_log_set(log_callback, nullptr);
         mtmd_helper_log_set(log_callback, nullptr);
         const std::string dir = bytes_to_string(env, jlib_dir);
+        g_lib_dir = dir;
         LOGI("loading ggml backends from %s", dir.c_str());
         ggml_backend_load_all_from_path(dir.c_str());
         llama_backend_init();
@@ -504,42 +611,25 @@ JNI_FN(jlong, nativeLoad)(JNIEnv * env, jobject, jbyteArray jpath, jint n_ctx, j
     return guarded<jlong>(env, 0, [&]() -> jlong {
         const std::string path = bytes_to_string(env, jpath);
         const std::string mmproj = bytes_to_string(env, jmmproj);
+        const int threads = n_threads > 0 ? n_threads : default_threads();
+        const LoadSpec spec{path, n_ctx, threads, n_batch, use_mmap == JNI_TRUE, !mmproj.empty()};
         auto s = std::make_unique<Session>();
 
-        llama_model_params mp = llama_model_default_params();
-        mp.n_gpu_layers = n_gpu_layers;
-        mp.load_mode = use_mmap ? LLAMA_LOAD_MODE_MMAP : LLAMA_LOAD_MODE_NONE;
-        s->model = llama_model_load_from_file(path.c_str(), mp);
-        if (s->model == nullptr) throw JniError("failed to load model: " + path);
-
-        const int threads = n_threads > 0 ? n_threads : default_threads();
-        llama_context_params cp = llama_context_default_params();
-        cp.n_ctx = n_ctx > 0 ? static_cast<uint32_t>(n_ctx) : 4096;
-        cp.n_batch = n_batch > 0 ? static_cast<uint32_t>(n_batch) : 512;
-        // Some projectors (e.g. Gemma 3) need all of an image's tokens in one micro-batch.
-        if (!mmproj.empty()) cp.n_batch = std::max<uint32_t>(cp.n_batch, 512);
-        cp.n_ubatch = std::min<uint32_t>(cp.n_batch, 512);
-        cp.n_threads = threads;
-        cp.n_threads_batch = threads;
-        cp.no_perf = false;
-        // Lets stop() interrupt a long prompt batch instead of waiting for it to finish.
-        cp.abort_callback = [](void *) -> bool { return is_cancelled(); };
-        cp.abort_callback_data = nullptr;
-        s->ctx = llama_init_from_model(s->model, cp);
-        if (s->ctx == nullptr) throw JniError("failed to create context (n_ctx=" + std::to_string(cp.n_ctx) + "); try a smaller context");
-
-        // Warm-up decode of one token: allocates compute buffers now, so a model that can't run
-        // fails (or crashes) inside load - where the crash-loop guard is armed - not on first chat.
-        {
-            const llama_vocab * vocab = llama_model_get_vocab(s->model);
-            llama_token tok = llama_vocab_bos(vocab);
-            if (tok < 0) tok = 0;
-            common_batch warm(s->ctx);
-            warm.add(tok, 0, 0, true);
-            const int wret = llama_process(s->ctx, LLAMA_PROCESS_TYPE_DECODE, warm.get());
-            llama_memory_clear(llama_get_memory(s->ctx), true);
-            if (wret != 0) throw JniError("warm-up decode failed (" + std::to_string(wret) + ")");
+        // GPU only when asked for; any failure falls back to the CPU (a crash inside the driver
+        // is the crash-loop guard's job: the app turns GPU acceleration off after one).
+        std::string gpu_note;
+        ggml_backend_dev_t gpu = n_gpu_layers != 0 ? gpu_device(gpu_note) : nullptr;
+        if (n_gpu_layers != 0 && gpu == nullptr) LOGW("GPU requested but unavailable: %s", gpu_note.c_str());
+        try {
+            open_model(s.get(), spec, gpu, n_gpu_layers);
+        } catch (const std::exception & e) {
+            if (gpu == nullptr) throw;
+            LOGW("GPU load failed (%s); retrying on the CPU", e.what());
+            gpu_note = std::string("loading on the GPU failed: ") + e.what();
+            s = std::make_unique<Session>();
+            open_model(s.get(), spec, nullptr, 0);
         }
+        s->gpu_note = gpu_note;
 
         const std::string override_tmpl = jtemplate != nullptr ? bytes_to_string(env, jtemplate) : std::string();
         if (!override_tmpl.empty()) {
@@ -564,7 +654,8 @@ JNI_FN(jlong, nativeLoad)(JNIEnv * env, jobject, jbyteArray jpath, jint n_ctx, j
         // Vision projector. Its warm-up encode runs here too, under the crash-loop guard.
         if (!mmproj.empty()) {
             mtmd_context_params mparams = mtmd_context_params_default();
-            mparams.use_gpu = n_gpu_layers > 0;
+            // The image encoder stays on the CPU: OpenCL coverage of its ops is not guaranteed.
+            mparams.use_gpu = false;
             mparams.n_threads = threads;
             mparams.print_timings = false;
             mparams.warmup = true;
@@ -578,7 +669,8 @@ JNI_FN(jlong, nativeLoad)(JNIEnv * env, jobject, jbyteArray jpath, jint n_ctx, j
                 LOGI("vision projector loaded in %lld ms", static_cast<long long>((now_us() - t0) / 1000));
             }
         }
-        LOGI("model loaded: n_ctx=%u threads=%d vision=%d", llama_n_ctx(s->ctx), threads, s->mtmd ? 1 : 0);
+        LOGI("model loaded: n_ctx=%u threads=%d vision=%d backend=%s", llama_n_ctx(s->ctx), threads, s->mtmd ? 1 : 0,
+             s->backend.c_str());
         return reinterpret_cast<jlong>(s.release());
     });
 }
@@ -611,7 +703,7 @@ JNI_FN(void, nativeFree)(JNIEnv * env, jobject, jlong handle) {
 }
 
 // longs: [nParams, sizeBytes, nCtxTrain, nCtx, nLayer, supportsThinking(0/1), supportsVision(0/1)]
-// strings: [description, architecture, chatTemplate]
+// strings: [description, architecture, chatTemplate, backend, gpuNote]
 JNI_FN(void, nativeModelInfo)(JNIEnv * env, jobject, jlong handle, jlongArray jlongs, jobjectArray jstrings) {
     guarded<int>(env, 0, [&] {
         Session * s = as_session(handle);
@@ -637,6 +729,8 @@ JNI_FN(void, nativeModelInfo)(JNIEnv * env, jobject, jlong handle, jlongArray jl
         if (!arch.empty()) env->SetObjectArrayElement(jstrings, 1, string_to_bytes(env, arch));
         const char * tmpl = llama_model_chat_template(s->model, nullptr);
         if (tmpl != nullptr) env->SetObjectArrayElement(jstrings, 2, string_to_bytes(env, tmpl));
+        env->SetObjectArrayElement(jstrings, 3, string_to_bytes(env, s->backend));
+        if (!s->gpu_note.empty()) env->SetObjectArrayElement(jstrings, 4, string_to_bytes(env, s->gpu_note));
         return 0;
     });
 }
@@ -974,7 +1068,7 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
     });
 }
 
-// out (doubles): [ppTps, ppStd, tgTps, tgStd]; returns backend description
+// out (doubles): [ppTps, ppStd, tgTps, tgStd]; returns where the model runs (Session::backend)
 JNI_FN(jbyteArray, nativeBench)(JNIEnv * env, jobject, jlong handle, jint pp, jint tg, jint reps, jdoubleArray jout,
                                jlong op_id) {
     return guarded<jbyteArray>(env, nullptr, [&]() -> jbyteArray {
@@ -1029,12 +1123,7 @@ JNI_FN(jbyteArray, nativeBench)(JNIEnv * env, jobject, jlong handle, jint pp, ji
         jdouble out[4] = {pp_sum / reps, stddev(pp_sum, pp_sq), tg_sum / reps, stddev(tg_sum, tg_sq)};
         env->SetDoubleArrayRegion(jout, 0, 4, out);
 
-        std::string backends;
-        for (size_t i = 0; i < ggml_backend_reg_count(); ++i) {
-            if (!backends.empty()) backends += ",";
-            backends += ggml_backend_reg_name(ggml_backend_reg_get(i));
-        }
-        return string_to_bytes(env, backends);
+        return string_to_bytes(env, s->backend);
     });
 }
 

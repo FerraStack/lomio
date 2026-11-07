@@ -1,5 +1,6 @@
 package dev.lomio.llama
 
+import android.system.Os
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineDispatcher
@@ -22,7 +23,7 @@ import kotlinx.coroutines.withContext
  * @param nativeLibDir `context.applicationInfo.nativeLibraryDir`; the ggml CPU backend
  *   variants (`libggml-cpu-android_*.so`) are loaded from there.
  */
-class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
+class LlamaEngine(private val nativeLibDir: String, private val gpuKernelCacheDir: String? = null) : InferenceEngine {
   private val dispatcher: CoroutineDispatcher =
     Executors.newSingleThreadExecutor { r -> Thread(r, "lomio-llama").apply { isDaemon = true } }
       .asCoroutineDispatcher()
@@ -40,6 +41,8 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
 
   override suspend fun load(path: String, params: LoadParams): ModelInfo =
     withContext(dispatcher) {
+      // ggml-opencl caches compiled kernels there (the default, the temp dir, isn't writable).
+      gpuKernelCacheDir?.let { runCatching { Os.setenv("GGML_OPENCL_KERNEL_CACHE_DIR", it, false) } }
       NativeBridge.ensureInitialized(nativeLibDir)
       freeCurrent()
       _state.value = EngineState.Loading(path)
@@ -187,7 +190,7 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
 
   private fun readInfo(h: Long): ModelInfo {
     val longs = LongArray(7)
-    val strings = arrayOfNulls<ByteArray>(3)
+    val strings = arrayOfNulls<ByteArray>(5)
     NativeBridge.nativeModelInfo(h, longs, strings)
     return ModelInfo(
       description = strings[0]?.decodeToString().orEmpty(),
@@ -200,6 +203,8 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
       chatTemplate = strings[2]?.decodeToString(),
       supportsThinking = longs[5] != 0L,
       supportsVision = longs[6] != 0L,
+      backend = strings[3]?.decodeToString() ?: "CPU",
+      gpuNote = strings[4]?.decodeToString(),
     )
   }
 }

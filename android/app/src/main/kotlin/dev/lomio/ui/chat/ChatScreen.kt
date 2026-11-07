@@ -124,6 +124,8 @@ data class ChatUiState(
   val thinkingEnabled: Boolean = true,
   val systemPrompt: String? = null,
   val crashedModelName: String? = null,
+  /** GPU acceleration fell back to the CPU, or was turned off after a crash. */
+  val gpuNotice: String? = null,
   /** Why the last model load failed (shown as a banner until dismissed). */
   val loadError: String? = null,
   val error: String? = null,
@@ -160,6 +162,7 @@ class ChatActions(
   val onNewChat: () -> Unit = {},
   val onDelete: () -> Unit = {},
   val onDismissCrash: () -> Unit = {},
+  val onDismissGpuNotice: () -> Unit = {},
   val onDismissLoadError: () -> Unit = {},
   val onErrorShown: () -> Unit = {},
   val onScrolledToMessage: () -> Unit = {},
@@ -244,6 +247,7 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
       state.loadError?.let {
         WarningBanner(it, actions.onDismissLoadError, actionLabel = "Choose model", onAction = { showPicker = true })
       }
+      state.gpuNotice?.let { WarningBanner(it, actions.onDismissGpuNotice) }
       Box(Modifier.weight(1f).fillMaxWidth()) {
         when {
           state.messages.isEmpty() && state.modelStatus == ModelStatus.LOADING ->

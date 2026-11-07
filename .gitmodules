@@ -2,3 +2,7 @@
 	path = android/llama/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp
 	shallow = true
+[submodule "android/llama/opencl/OpenCL-Headers"]
+	path = android/llama/opencl/OpenCL-Headers
+	url = https://github.com/KhronosGroup/OpenCL-Headers
+	shallow = true

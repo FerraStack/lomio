@@ -30,11 +30,41 @@ set(GGML_BACKEND_DL       ON  CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_MTMD      ON  CACHE BOOL "" FORCE)
 set(MTMD_VIDEO            OFF CACHE BOOL "" FORCE)
 
+# Experimental Adreno GPU backend (OpenCL), arm64 only. -DLOMIO_OPENCL=OFF leaves it out.
+option(LOMIO_OPENCL "Build the OpenCL (Adreno) GPU backend for arm64" ON)
+
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     # One CPU module per Android ARM feature level (armv8.0 / 8.2+dotprod / 8.2+fp16 /
     # 8.6+i8mm / 9.0+sve2 / 9.2+sme); ggml scores them and loads the best one.
     set(GGML_CPU_ALL_VARIANTS ON  CACHE BOOL "" FORCE)
     set(GGML_CPU_KLEIDIAI     ON  CACHE BOOL "" FORCE)
+    if(LOMIO_OPENCL)
+        # The NDK has no OpenCL: compile against the Khronos headers (submodule) and link
+        # against a stub libOpenCL.so made of the entry points ggml-opencl calls. The stub is
+        # never packaged (see packaging.jniLibs.excludes); at runtime the vendor's own
+        # /vendor/lib64/libOpenCL.so is used (AndroidManifest: uses-native-library).
+        set(LOMIO_OPENCL_HEADERS ${CMAKE_CURRENT_LIST_DIR}/../../../opencl/OpenCL-Headers)
+        file(GLOB LOMIO_OPENCL_SOURCES ${LLAMA_SRC}/ggml/src/ggml-opencl/*.cpp)
+        set(LOMIO_CL_FUNCS "")
+        foreach(src ${LOMIO_OPENCL_SOURCES})
+            file(READ ${src} content)
+            string(REGEX MATCHALL "cl[A-Z][A-Za-z0-9_]+[ \t]*\\(" calls "${content}")
+            list(APPEND LOMIO_CL_FUNCS ${calls})
+        endforeach()
+        list(TRANSFORM LOMIO_CL_FUNCS REPLACE "[ \t]*\\($" "")
+        list(REMOVE_DUPLICATES LOMIO_CL_FUNCS)
+        set(stub_src "/* Generated: link-time stub for libOpenCL.so, never shipped. */\n")
+        foreach(fn ${LOMIO_CL_FUNCS})
+            string(APPEND stub_src "void ${fn}(void) {}\n")
+        endforeach()
+        file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/opencl_stub.c "${stub_src}")
+        add_library(OpenCL SHARED ${CMAKE_CURRENT_BINARY_DIR}/opencl_stub.c)
+        set(OpenCL_INCLUDE_DIR ${LOMIO_OPENCL_HEADERS} CACHE PATH "" FORCE)
+        set(OpenCL_LIBRARY OpenCL CACHE STRING "" FORCE)
+        set(GGML_OPENCL                    ON  CACHE BOOL "" FORCE)
+        set(GGML_OPENCL_EMBED_KERNELS      ON  CACHE BOOL "" FORCE)
+        set(GGML_OPENCL_USE_ADRENO_KERNELS ON  CACHE BOOL "" FORCE)
+    endif()
 elseif(ANDROID_ABI STREQUAL "x86_64")
     # Emulator only: a single baseline module (x86-64 Android ABI guarantees SSE4.2).
     set(GGML_CPU_ALL_VARIANTS OFF CACHE BOOL "" FORCE)
@@ -51,6 +81,13 @@ endif()
 
 add_subdirectory(${LLAMA_SRC} build-llama)
 
+if(TARGET ggml-opencl)
+    # Renamed so ggml_backend_load_all_from_path() (which looks for libggml-<name>*.so) skips
+    # it: the GPU backend is only loaded when the user turns GPU acceleration on (lomio_jni.cpp).
+    set_target_properties(ggml-opencl PROPERTIES OUTPUT_NAME lomio-opencl)
+    target_link_options(ggml-opencl PRIVATE "-Wl,-z,max-page-size=16384")
+endif()
+
 # ---------------------------------------------------------------------------
 # JNI bridge
 # ---------------------------------------------------------------------------
@@ -60,6 +97,10 @@ target_include_directories(lomio_jni PRIVATE
         ${LLAMA_SRC}/include
         ${LLAMA_SRC}/common
         ${LLAMA_SRC}/ggml/include)
+
+if(TARGET ggml-opencl)
+    target_compile_definitions(lomio_jni PRIVATE LOMIO_HAS_OPENCL=1)
+endif()
 
 target_link_libraries(lomio_jni
         llama
