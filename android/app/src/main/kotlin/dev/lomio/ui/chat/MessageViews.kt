@@ -167,6 +167,7 @@ fun MarkdownText(content: String, modifier: Modifier = Modifier, streaming: Bool
       h5 = type.labelLarge,
       h6 = type.labelLarge,
       code = type.bodyMedium.copy(fontFamily = FontFamily.Monospace, color = Color(0xFF000000.toInt() or palette.plain)),
+      table = type.bodyMedium,
     )
   // The renderer's defaults are new objects on every call, and several are provided through
   // static composition locals: a new instance would recompose every block on every token.
@@ -219,6 +220,7 @@ fun MarkdownText(content: String, modifier: Modifier = Modifier, streaming: Bool
 
 private fun lomioMarkdownComponents(palette: CodePalette) =
   markdownComponents(
+    table = { MarkdownTableView(it.content, it.node, it.typography.table) },
     codeFence = {
       MarkdownCodeFence(it.content, it.node, it.typography.code) { code, language, style ->
         HighlightedCode(code, language, style, palette)
