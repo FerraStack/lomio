@@ -150,6 +150,8 @@ class ChatService(
     try {
       engine.chat(history, sampling, enableThinking).collect { ev ->
         when (ev) {
+          is GenerationEvent.PromptProgress ->
+            dispatch(GenEvent.PromptProgress(assistant.id, ev.done, ev.total))
           is GenerationEvent.Update -> {
             content = ev.content
             reasoning = ev.reasoning

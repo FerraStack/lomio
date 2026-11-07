@@ -202,8 +202,11 @@ void log_callback(ggml_log_level level, const char * text, void * /*user*/) {
 }
 
 // Decodes tokens[from..] into seq 0, n_batch at a time; only the last token gets logits.
-// Returns llama_process's status (0 = ok); appends decoded tokens to s->cached.
-int decode_prompt(Session * s, const std::vector<llama_token> & tokens, size_t from) {
+// Returns 0 = ok, -100 = cancelled, otherwise llama_process's status. s->cached always matches
+// what is in the KV cache up to the last fully decoded batch, so a cancelled prompt keeps the
+// part that was already processed (issue #3). `on_batch(done)` runs after each batch.
+template <typename F>
+int decode_prompt(Session * s, const std::vector<llama_token> & tokens, size_t from, F && on_batch) {
     const int n_batch = static_cast<int>(llama_n_batch(s->ctx));
     common_batch batch(s->ctx);
     for (size_t i = from; i < tokens.size(); i += n_batch) {
@@ -217,8 +220,19 @@ int decode_prompt(Session * s, const std::vector<llama_token> & tokens, size_t f
         if (ret == 2) return -100;  // aborted by abort_callback (stop requested mid-batch)
         if (ret != 0) return ret;
         s->cached.insert(s->cached.end(), tokens.begin() + i, tokens.begin() + end);
+        on_batch(end);
     }
     return 0;
+}
+
+// After a stopped or failed decode: drop whatever the KV cache holds past s->cached (an
+// aborted batch can leave some of its micro-batches behind). Falls back to clearing everything
+// when the memory can't drop a tail (recurrent models) or after a real decode error.
+void settle_cache(Session * s, bool keep_prefix) {
+    llama_memory_t mem = llama_get_memory(s->ctx);
+    if (keep_prefix && llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(s->cached.size()), -1)) return;
+    llama_memory_clear(mem, true);
+    s->cached.clear();
 }
 
 void read_gguf_int(const gguf_context * g, const std::string & key, jlong & out) {
@@ -425,8 +439,10 @@ JNI_FN(void, nativeStop)(JNIEnv *, jobject, jlong upto_op_id) {
 // floats: [temperature, topP, minP, repeatPenalty, presencePenalty, frequencyPenalty]
 // ints:   [topK, repeatLastN, maxTokens]
 // statsOut (doubles): [promptTokens, cachedTokens, generatedTokens, ttftMs, promptTps, genTps, stopReason]
-// callback: object with `void onUpdate(byte[] content, byte[] reasoning)`; called throttled
-// while generating and exactly once more with the final parse.
+// callback: object with `void onUpdate(byte[] content, byte[] reasoning)`, called throttled
+// while generating and exactly once more with the final parse, and
+// `void onPromptProgress(int done, int total)`, called before and after each prompt batch
+// (`done` counts tokens in the KV cache, reused prefix included).
 JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jroles, jobjectArray jcontents,
                         jobjectArray jreasonings, jboolean enable_thinking, jfloatArray jfloats, jintArray jints,
                         jlong seed, jobjectArray jstops, jobject callback, jdoubleArray jstats, jlong op_id) {
@@ -437,6 +453,8 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
         jclass cb_cls = env->GetObjectClass(callback);
         jmethodID on_update = env->GetMethodID(cb_cls, "onUpdate", "([B[B)V");
         if (on_update == nullptr) throw JniError("callback has no onUpdate([B[B)V");
+        jmethodID on_progress = env->GetMethodID(cb_cls, "onPromptProgress", "(II)V");
+        if (on_progress == nullptr) throw JniError("callback has no onPromptProgress(II)V");
 
         // --- inputs -------------------------------------------------------------------
         std::vector<common_chat_msg> all_msgs;
@@ -518,6 +536,14 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
             }
         };
 
+        auto progress = [&](size_t done) {
+            env->CallVoidMethod(callback, on_progress, static_cast<jint>(done), static_cast<jint>(prompt.size()));
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                cancel_upto(static_cast<int64_t>(op_id));
+            }
+        };
+
         if (prompt.empty() || static_cast<int>(prompt.size()) >= n_ctx - 4) {
             LOGW("prompt (%zu tokens) does not fit context %d", prompt.size(), n_ctx);
             stats[6] = STOP_CONTEXT_FULL;
@@ -541,13 +567,16 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
         stats[1] = static_cast<double>(n_keep);
 
         const int64_t t_start = now_us();
-        int ret = decode_prompt(s, prompt, n_keep);
+        progress(n_keep);
+        int ret = decode_prompt(s, prompt, n_keep, progress);
         const int64_t t_prompt = now_us();
         if (ret != 0) {
-            llama_memory_clear(mem, true);
-            s->cached.clear();
+            // Stopped (or out of KV slots): keep the prefix decoded so far for the next turn.
+            const bool keep = ret == -100 || ret == 1;
+            settle_cache(s, keep);
+            if (keep) LOGI("prompt decode stopped; keeping %zu cached tokens", s->cached.size());
             stats[6] = ret == -100 ? STOP_CANCELLED : (ret == 1 ? STOP_CONTEXT_FULL : STOP_ERROR);
-            if (ret != -100 && ret != 1) LOGE("prompt decode failed: %d", ret);
+            if (!keep) LOGE("prompt decode failed: %d", ret);
             emit("", "");
             finish_stats();
             return 0;
@@ -627,6 +656,7 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
             if (ret != 0) {
                 reason = ret == 1 ? STOP_CONTEXT_FULL : (ret == 2 ? STOP_CANCELLED : STOP_ERROR);
                 if (ret != 1 && ret != 2) LOGE("decode failed: %d", ret);
+                settle_cache(s, ret == 1 || ret == 2);
                 break;
             }
             s->cached.push_back(tok);

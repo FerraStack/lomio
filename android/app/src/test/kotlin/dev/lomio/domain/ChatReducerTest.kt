@@ -33,6 +33,33 @@ class ChatReducerTest {
   }
 
   @Test
+  fun promptProgressShowsUntilTheFirstToken() {
+    val started = run(GenEvent.Started("c1", "a1", 5))
+    val p = ChatReducer.reduce(started, GenEvent.PromptProgress("a1", 300, 1200))
+    assertEquals(0.25f, p.streaming!!.promptProgress!!, 1e-6f)
+    // Another message's progress is ignored.
+    assertEquals(p, ChatReducer.reduce(p, GenEvent.PromptProgress("other", 900, 1200)))
+    // The first token clears it, and later progress events can't bring it back.
+    val first = ChatReducer.reduce(p, GenEvent.Update("a1", "Once", ""))
+    assertNull(first.streaming!!.promptProgress)
+    assertNull(ChatReducer.reduce(first, GenEvent.PromptProgress("a1", 1200, 1200)).streaming!!.promptProgress)
+    // Empty prompt counts as done; values are clamped.
+    assertEquals(1f, ChatReducer.reduce(started, GenEvent.PromptProgress("a1", 0, 0)).streaming!!.promptProgress!!, 0f)
+    assertEquals(1f, ChatReducer.reduce(started, GenEvent.PromptProgress("a1", 9, 3)).streaming!!.promptProgress!!, 0f)
+  }
+
+  @Test
+  fun stopDuringPromptClearsProgress() {
+    val s = run(
+      GenEvent.Started("c1", "a1", 5),
+      GenEvent.PromptProgress("a1", 64, 512),
+      GenEvent.Finished("a1", "", "", stats(StopReason.CANCELLED)),
+    )
+    assertNull(s.lastFinished!!.promptProgress)
+    assertEquals(MessageStatus.STOPPED, s.lastFinished!!.status)
+  }
+
+  @Test
   fun cancelledMeansStopped() {
     val s = run(GenEvent.Started("c1", "a1", 5), GenEvent.Finished("a1", "Hi", "", stats(StopReason.CANCELLED)))
     assertEquals(MessageStatus.STOPPED, s.lastFinished!!.status)

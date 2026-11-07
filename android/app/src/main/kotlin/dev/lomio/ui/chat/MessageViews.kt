@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -27,6 +28,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -113,7 +115,8 @@ fun AssistantMessage(
     if (message.content.isNotEmpty()) {
       SelectionContainer { MarkdownText(message.content, streaming = streaming) }
     } else if (streaming && message.reasoning.isNullOrBlank()) {
-      TypingIndicator()
+      val progress = message.promptProgress
+      if (progress != null && progress < 1f) PromptProgress(progress) else TypingIndicator()
     }
     when (message.status) {
       MessageStatus.STOPPED -> StatusNote("Stopped")
@@ -268,6 +271,30 @@ private fun ReasoningBlock(text: String, streaming: Boolean) {
         )
       }
     }
+  }
+}
+
+/** Shown while a long prompt is processed, before the first token (can take seconds on a phone). */
+@Composable
+private fun PromptProgress(progress: Float) {
+  val percent = (progress * 100).toInt()
+  Row(
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(12.dp),
+    modifier =
+      Modifier.padding(vertical = 8.dp).semantics(mergeDescendants = true) {
+        contentDescription = "Reading your message, $percent percent"
+      },
+  ) {
+    LinearProgressIndicator(
+      progress = { progress },
+      modifier = Modifier.width(96.dp).clip(RoundedCornerShape(50)),
+    )
+    Text(
+      "Reading your message · $percent%",
+      style = MaterialTheme.typography.labelMedium,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
   }
 }
 

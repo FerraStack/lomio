@@ -88,6 +88,12 @@ data class GenerationStats(
 
 sealed interface GenerationEvent {
   /**
+   * Prompt processing progress: [done] of [total] prompt tokens are in the KV cache (the reused
+   * prefix counts as done). Sent before the first batch and after each one.
+   */
+  data class PromptProgress(val done: Int, val total: Int) : GenerationEvent
+
+  /**
    * Full parsed snapshot of the assistant reply so far (not a delta): the template-aware
    * parser may rewrite earlier text, e.g. when a `<think>` tag closes.
    */

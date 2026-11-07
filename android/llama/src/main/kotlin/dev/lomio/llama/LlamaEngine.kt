@@ -97,6 +97,10 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
                   last = GenerationEvent.Update(content.decodeToString(), reasoning.decodeToString())
                   trySend(last)
                 }
+
+                override fun onPromptProgress(done: Int, total: Int) {
+                  trySend(GenerationEvent.PromptProgress(done, total))
+                }
               }
             val stats = DoubleArray(7)
             try {
