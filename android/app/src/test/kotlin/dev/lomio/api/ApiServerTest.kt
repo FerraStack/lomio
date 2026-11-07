@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -202,7 +203,10 @@ class ApiServerTest {
     val r = call.execute()
     val source = r.body.source()
     // Wait until generation is under way, then hang up.
-    while (source.readUtf8Line()?.contains("\"a\"") != true) Unit
+    while (true) {
+      val line = source.readUtf8Line() ?: throw AssertionError("stream ended early")
+      if (line.contains("\"a\"")) break
+    }
     r.close()
     call.cancel()
     runBlocking { withTimeout(5_000) { cancelled.await() } }
@@ -224,7 +228,8 @@ class ApiServerTest {
     threads.forEach { it.join(10_000) }
     assertEquals(1, peak.get())
     assertEquals(3, server.stats.value.served)
-    assertEquals(0, server.stats.value.active)
+    // The handler's bookkeeping finishes just after the reply is written.
+    runBlocking { withTimeout(5_000) { server.stats.first { it.active == 0 } } }
   }
 
   @Test

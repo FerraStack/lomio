@@ -239,8 +239,9 @@ class ApiServer(private val backend: ApiBackend, private val clock: () -> Long =
       var done: GenerationEvent.Done? = null
       flow.collect { if (it is GenerationEvent.Done) done = it }
       val d = done ?: throw ApiError(500, "The generation ended without a result", "server_error")
-      res.json(200, OpenAiApi.completionJson(id, created, model.id, d.content, d.reasoning, d.stats))
+      // Counted before the reply goes out, so a client that sees the reply also sees the count.
       _stats.update { it.copy(served = it.served + 1) }
+      res.json(200, OpenAiApi.completionJson(id, created, model.id, d.content, d.reasoning, d.stats))
       return
     }
     res.startEventStream()
@@ -263,8 +264,8 @@ class ApiServer(private val backend: ApiBackend, private val clock: () -> Long =
           send(ev.content, ev.reasoning)
           res.event(OpenAiApi.chunkJson(id, created, model.id, finishReason = OpenAiApi.finishReason(ev.stats.stopReason)))
           if (request.includeUsage) res.event(OpenAiApi.usageChunkJson(id, created, model.id, ev.stats))
-          res.event("[DONE]")
           _stats.update { it.copy(served = it.served + 1) }
+          res.event("[DONE]")
         }
       }
     }
