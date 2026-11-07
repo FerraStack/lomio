@@ -94,7 +94,7 @@ class MarkdownTableUiTest {
     )
     assertTrue(scrollRange().maxValue() > 0f)
     // No ellipsis: the full text of the long cell is laid out.
-    compose.onAllNodesWithText("Fast on any phone with 6 GB of RAM or more").fetchSemanticsNodes().single()
+    compose.onAllNodesWithText("Fast on any phone with 6 GB of RAM or more", substring = true).fetchSemanticsNodes().single()
   }
 
   @Test
