@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Unit tests, screenshots, debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: android
+    env:
+      LOMIO_CCACHE: "1"
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 2G
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: "true"
+      CMAKE_BUILD_PARALLEL_LEVEL: "4"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install NDK and CMake
+        run: sdkmanager --install "ndk;30.0.16248370" "cmake;3.31.6" > /dev/null
+
+      - uses: hendrikmuhs/ccache-action@v1.2.24
+        with:
+          key: llama-${{ hashFiles('.gitmodules', 'android/llama/src/main/cpp/**', 'android/llama/build.gradle.kts') }}
+          restore-keys: llama-
+          max-size: 2G
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Unit tests (+ Roborazzi screenshots)
+        run: ./gradlew --max-workers=4 testDebugUnitTest
+
+      - name: Assemble debug APK
+        run: ./gradlew --max-workers=4 assembleDebug
+
+      - name: Check native libraries in the APK
+        run: |
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep '\.so$'
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -q 'lib/arm64-v8a/liblomio_jni.so'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lomio-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: screenshots
+          path: android/app/build/outputs/roborazzi/*.png
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: test-reports
+          path: |
+            android/*/build/reports/tests/
+            android/*/build/test-results/
+
+  emulator:
+    name: Emulator launch screenshot
+    needs: android
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: lomio-debug-apk
+          path: apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: |
+            adb install -r apk/app-debug.apk
+            adb shell am start -W -n dev.lomio/.MainActivity
+            sleep 10
+            adb exec-out screencap -p > emulator_launch.png
+            adb logcat -d -t 400 > logcat.txt || true
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: emulator-screenshot
+          path: |
+            emulator_launch.png
+            logcat.txt
+          if-no-files-found: warn
+
+  screenshots-comment:
+    name: Post screenshots on the PR
+    needs: [android, emulator]
+    if: always() && github.event_name == 'pull_request' && needs.android.result == 'success' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: screenshots
+          path: shots
+
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: emulator-screenshot
+          path: shots
+
+      - name: Push PNGs to ci-screenshots and upsert the PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          dir="pr-$PR/$RUN_ID"
+          git init -q pub
+          cd pub
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          if git fetch -q --depth 1 origin ci-screenshots 2>/dev/null; then
+            git checkout -q -b ci-screenshots FETCH_HEAD
+          else
+            git checkout -q --orphan ci-screenshots
+          fi
+          mkdir -p "$dir"
+          find ../shots -name '*.png' -exec cp {} "$dir"/ \;
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Screenshots for PR #$PR (run $RUN_ID)"
+          git push -q origin ci-screenshots
+
+          base="https://raw.githubusercontent.com/${REPO}/ci-screenshots/${dir}"
+          {
+            echo "<!-- ferra-screenshots -->"
+            echo "### Screenshots"
+            echo "Commit ${SHA:0:7} · [run $RUN_ID](https://github.com/${REPO}/actions/runs/${RUN_ID})"
+            echo
+            echo "| Screen | Light | Dark |"
+            echo "|---|---|---|"
+            for light in $(ls "$dir" | grep '_light\.png$' | sort); do
+              name="${light%_light.png}"
+              dark="${name}_dark.png"
+              darkcell="—"
+              [ -f "$dir/$dark" ] && darkcell="<img src=\"$base/$dark\" width=\"260\">"
+              echo "| \`$name\` | <img src=\"$base/$light\" width=\"260\"> | $darkcell |"
+            done
+            if [ -f "$dir/emulator_launch.png" ]; then
+              echo
+              echo "**Emulator (API 35, x86_64) launch:**"
+              echo
+              echo "<img src=\"$base/emulator_launch.png\" width=\"260\">"
+            fi
+          } > ../body.md
+
+          id=$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate \
+            --jq '.[] | select(.body | contains("<!-- ferra-screenshots -->")) | .id' | head -n1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${id}" -F body=@../body.md > /dev/null
+          else
+            gh api "repos/${REPO}/issues/${PR}/comments" -F body=@../body.md > /dev/null
+          fi
