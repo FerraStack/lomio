@@ -8,8 +8,8 @@ object Storage {
   const val UNUSED_AFTER_DAYS = 30
 
   /**
-   * Files this recent are never called leftovers: an import copies into `models/local/*.part`
-   * before its database row exists.
+   * Files this recent are never called leftovers: an import copies into a `.part` file under
+   * `models/local` before its database row exists.
    */
   const val LEFTOVER_GRACE_MS = 10L * 60 * 1000
 
