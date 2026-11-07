@@ -61,8 +61,11 @@ internal object NativeBridge {
    */
   external fun nativeReadGguf(path: ByteArray, longs: LongArray, strings: Array<ByteArray?>): Boolean
 
-  /** Thread-safe: asks the running [nativeChat] / [nativeBench] to return early. */
-  external fun nativeStop()
+  /**
+   * Thread-safe: cancels every chat/bench operation whose op id is ≤ [uptoOpId], including one
+   * that hasn't reached native code yet.
+   */
+  external fun nativeStop(uptoOpId: Long)
 
   /**
    * floats: `[temperature, topP, minP, repeatPenalty, presencePenalty, frequencyPenalty]`;
@@ -81,8 +84,9 @@ internal object NativeBridge {
     stops: Array<ByteArray>,
     callback: UpdateCallback,
     stats: DoubleArray,
+    opId: Long,
   )
 
   /** out: `[ppTps, ppStd, tgTps, tgStd]`; returns the comma-separated backend list. */
-  external fun nativeBench(handle: Long, pp: Int, tg: Int, reps: Int, out: DoubleArray): ByteArray
+  external fun nativeBench(handle: Long, pp: Int, tg: Int, reps: Int, out: DoubleArray, opId: Long): ByteArray
 }

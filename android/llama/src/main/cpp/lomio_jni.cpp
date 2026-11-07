@@ -49,7 +49,27 @@ const char * const CHATML_TEMPLATE =
 
 constexpr int64_t EMIT_INTERVAL_US = 50 * 1000;
 
-std::atomic<bool> g_cancel{false};
+// Cancellation is per operation: Kotlin numbers every chat/bench call (op id ≥ 1) and stop()
+// cancels "everything up to id N". A stop that arrives before the native call starts is
+// therefore not lost, and a stale stop can't cancel the next call.
+std::atomic<int64_t> g_cancel_upto{0};
+std::atomic<int64_t> g_current_op{0};  // 0 = no cancellable op running (e.g. load warm-up)
+
+bool is_cancelled() {
+    const int64_t cur = g_current_op.load();
+    return cur > 0 && g_cancel_upto.load() >= cur;
+}
+
+void cancel_upto(int64_t id) {
+    int64_t prev = g_cancel_upto.load();
+    while (prev < id && !g_cancel_upto.compare_exchange_weak(prev, id)) {}
+}
+
+// Marks the running op for the duration of a native call.
+struct OpScope {
+    explicit OpScope(int64_t id) { g_current_op.store(id); }
+    ~OpScope() { g_current_op.store(0); }
+};
 
 struct Session {
     llama_model *             model = nullptr;
@@ -187,13 +207,14 @@ int decode_prompt(Session * s, const std::vector<llama_token> & tokens, size_t f
     const int n_batch = static_cast<int>(llama_n_batch(s->ctx));
     common_batch batch(s->ctx);
     for (size_t i = from; i < tokens.size(); i += n_batch) {
-        if (g_cancel.load()) return -100;
+        if (is_cancelled()) return -100;
         const size_t end = std::min(tokens.size(), i + static_cast<size_t>(n_batch));
         batch.clear();
         for (size_t j = i; j < end; ++j) {
             batch.add(tokens[j], static_cast<llama_pos>(j), 0, j == tokens.size() - 1);
         }
         const int ret = llama_process(s->ctx, LLAMA_PROCESS_TYPE_DECODE, batch.get());
+        if (ret == 2) return -100;  // aborted by abort_callback (stop requested mid-batch)
         if (ret != 0) return ret;
         s->cached.insert(s->cached.end(), tokens.begin() + i, tokens.begin() + end);
     }
@@ -283,8 +304,24 @@ JNI_FN(jlong, nativeLoad)(JNIEnv * env, jobject, jbyteArray jpath, jint n_ctx, j
         cp.n_threads = threads;
         cp.n_threads_batch = threads;
         cp.no_perf = false;
+        // Lets stop() interrupt a long prompt batch instead of waiting for it to finish.
+        cp.abort_callback = [](void *) -> bool { return is_cancelled(); };
+        cp.abort_callback_data = nullptr;
         s->ctx = llama_init_from_model(s->model, cp);
         if (s->ctx == nullptr) throw JniError("failed to create context (n_ctx=" + std::to_string(cp.n_ctx) + "); try a smaller context");
+
+        // Warm-up decode of one token: allocates compute buffers now, so a model that can't run
+        // fails (or crashes) inside load - where the crash-loop guard is armed - not on first chat.
+        {
+            const llama_vocab * vocab = llama_model_get_vocab(s->model);
+            llama_token tok = llama_vocab_bos(vocab);
+            if (tok < 0) tok = 0;
+            common_batch warm(s->ctx);
+            warm.add(tok, 0, 0, true);
+            const int wret = llama_process(s->ctx, LLAMA_PROCESS_TYPE_DECODE, warm.get());
+            llama_memory_clear(llama_get_memory(s->ctx), true);
+            if (wret != 0) throw JniError("warm-up decode failed (" + std::to_string(wret) + ")");
+        }
 
         try {
             s->tmpls = common_chat_templates_init(s->model, "");
@@ -381,8 +418,8 @@ JNI_FN(jboolean, nativeReadGguf)(JNIEnv * env, jobject, jbyteArray jpath, jlongA
     });
 }
 
-JNI_FN(void, nativeStop)(JNIEnv *, jobject) {
-    g_cancel.store(true);
+JNI_FN(void, nativeStop)(JNIEnv *, jobject, jlong upto_op_id) {
+    cancel_upto(static_cast<int64_t>(upto_op_id));
 }
 
 // floats: [temperature, topP, minP, repeatPenalty, presencePenalty, frequencyPenalty]
@@ -392,29 +429,25 @@ JNI_FN(void, nativeStop)(JNIEnv *, jobject) {
 // while generating and exactly once more with the final parse.
 JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jroles, jobjectArray jcontents,
                         jobjectArray jreasonings, jboolean enable_thinking, jfloatArray jfloats, jintArray jints,
-                        jlong seed, jobjectArray jstops, jobject callback, jdoubleArray jstats) {
+                        jlong seed, jobjectArray jstops, jobject callback, jdoubleArray jstats, jlong op_id) {
     guarded<int>(env, 0, [&] {
         Session * s = as_session(handle);
-        g_cancel.store(false);
+        OpScope op(static_cast<int64_t>(op_id));
 
         jclass cb_cls = env->GetObjectClass(callback);
         jmethodID on_update = env->GetMethodID(cb_cls, "onUpdate", "([B[B)V");
         if (on_update == nullptr) throw JniError("callback has no onUpdate([B[B)V");
 
         // --- inputs -------------------------------------------------------------------
-        common_chat_templates_inputs inputs;
+        std::vector<common_chat_msg> all_msgs;
         const jsize n_msgs = env->GetArrayLength(jroles);
         for (jsize i = 0; i < n_msgs; ++i) {
             common_chat_msg m;
             m.role = element_string(env, jroles, i);
             m.content = element_string(env, jcontents, i);
             m.reasoning_content = element_string(env, jreasonings, i);
-            inputs.messages.push_back(std::move(m));
+            all_msgs.push_back(std::move(m));
         }
-        inputs.add_generation_prompt = true;
-        inputs.use_jinja = true;
-        inputs.enable_thinking = enable_thinking == JNI_TRUE;
-        inputs.reasoning_format = COMMON_REASONING_FORMAT_DEEPSEEK;
 
         float f[6];
         env->GetFloatArrayRegion(jfloats, 0, 6, f);
@@ -426,28 +459,51 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
             if (!st.empty()) stops.push_back(std::move(st));
         }
 
+        const llama_vocab * vocab = llama_model_get_vocab(s->model);
+        const int n_ctx = static_cast<int>(llama_n_ctx(s->ctx));
+        const int max_tokens = iv[2];
+        // Room left for the reply; older turns are dropped until the prompt leaves this much.
+        const int reserve = max_tokens > 0 ? std::min(max_tokens, n_ctx / 2) : n_ctx / 4;
+        const size_t keep_head = (!all_msgs.empty() && all_msgs[0].role == "system") ? 1 : 0;
+
         std::unique_ptr<common_chat_session> chat;
-        try {
-            chat = std::make_unique<common_chat_session>(s->tmpls.get(), llama_model_get_vocab(s->model), inputs);
-        } catch (const std::exception & e) {
-            LOGW("template apply failed (%s), retrying with ChatML", e.what());
-            s->tmpls = common_chat_templates_init(s->model, CHATML_TEMPLATE);
-            chat = std::make_unique<common_chat_session>(s->tmpls.get(), llama_model_get_vocab(s->model), inputs);
+        std::vector<llama_token> prompt;
+        size_t drop = 0;
+        for (;;) {
+            common_chat_templates_inputs inputs;
+            inputs.messages.assign(all_msgs.begin(), all_msgs.begin() + keep_head);
+            inputs.messages.insert(inputs.messages.end(), all_msgs.begin() + keep_head + drop, all_msgs.end());
+            inputs.add_generation_prompt = true;
+            inputs.use_jinja = true;
+            inputs.enable_thinking = enable_thinking == JNI_TRUE;
+            inputs.reasoning_format = COMMON_REASONING_FORMAT_DEEPSEEK;
+            try {
+                chat = std::make_unique<common_chat_session>(s->tmpls.get(), vocab, inputs);
+            } catch (const std::exception & e) {
+                LOGW("template apply failed (%s), retrying with ChatML", e.what());
+                s->tmpls = common_chat_templates_init(s->model, CHATML_TEMPLATE);
+                chat = std::make_unique<common_chat_session>(s->tmpls.get(), vocab, inputs);
+            }
+
+            // tokenize: template text may contain special tokens, user input may not
+            prompt.clear();
+            if (llama_vocab_get_add_bos(vocab)) prompt.push_back(llama_vocab_bos(vocab));
+            for (const auto & part : chat->prompt().parts) {
+                auto toks = common_tokenize(vocab, part.text, /*add_special=*/false, /*parse_special=*/!part.is_input);
+                prompt.insert(prompt.end(), toks.begin(), toks.end());
+            }
+
+            const size_t remaining = all_msgs.size() - keep_head - drop;
+            if (static_cast<int>(prompt.size()) + reserve <= n_ctx || remaining <= 1) break;
+            // Drop the oldest turn (never the system prompt), restarting at a user message.
+            ++drop;
+            while (keep_head + drop + 1 < all_msgs.size() && all_msgs[keep_head + drop].role != "user") ++drop;
         }
+        if (drop > 0) LOGI("context: dropped %zu oldest messages to fit n_ctx=%d", drop, n_ctx);
         for (const auto & st : chat->additional_stops()) {
             if (!st.empty()) stops.push_back(st);
         }
 
-        // --- tokenize: template text may contain special tokens, user input may not -----
-        const llama_vocab * vocab = llama_model_get_vocab(s->model);
-        std::vector<llama_token> prompt;
-        if (llama_vocab_get_add_bos(vocab)) prompt.push_back(llama_vocab_bos(vocab));
-        for (const auto & part : chat->prompt().parts) {
-            auto toks = common_tokenize(vocab, part.text, /*add_special=*/false, /*parse_special=*/!part.is_input);
-            prompt.insert(prompt.end(), toks.begin(), toks.end());
-        }
-
-        const int n_ctx = static_cast<int>(llama_n_ctx(s->ctx));
         double stats[7] = {static_cast<double>(prompt.size()), 0, 0, 0, 0, 0, STOP_EOS};
         auto finish_stats = [&] { env->SetDoubleArrayRegion(jstats, 0, 7, stats); };
         auto emit = [&](const std::string & content, const std::string & reasoning) {
@@ -458,7 +514,7 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
             env->DeleteLocalRef(r);
             if (env->ExceptionCheck()) {  // collector gone: stop quietly
                 env->ExceptionClear();
-                g_cancel.store(true);
+                cancel_upto(static_cast<int64_t>(op_id));
             }
         };
 
@@ -517,7 +573,6 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
         if (!smpl) throw JniError("failed to initialise sampler");
 
         // --- generation loop -------------------------------------------------------------
-        const int max_tokens = iv[2];
         common_batch batch(s->ctx);
         common_chat_input raw;  // generated text + token ids
         size_t fed = 0;         // bytes of `raw` already fed to the parser
@@ -540,7 +595,7 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
         StopReason reason = STOP_EOS;
         llama_pos pos = static_cast<llama_pos>(prompt.size());
         for (;;) {
-            if (g_cancel.load()) { reason = STOP_CANCELLED; break; }
+            if (is_cancelled()) { reason = STOP_CANCELLED; break; }
             if (max_tokens > 0 && n_gen >= max_tokens) { reason = STOP_MAX_TOKENS; break; }
             if (pos >= n_ctx) { reason = STOP_CONTEXT_FULL; break; }
 
@@ -570,8 +625,8 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
             batch.add(tok, pos, 0, true);
             ret = llama_process(s->ctx, LLAMA_PROCESS_TYPE_DECODE, batch.get());
             if (ret != 0) {
-                reason = ret == 1 ? STOP_CONTEXT_FULL : STOP_ERROR;
-                if (ret != 1) LOGE("decode failed: %d", ret);
+                reason = ret == 1 ? STOP_CONTEXT_FULL : (ret == 2 ? STOP_CANCELLED : STOP_ERROR);
+                if (ret != 1 && ret != 2) LOGE("decode failed: %d", ret);
                 break;
             }
             s->cached.push_back(tok);
@@ -611,10 +666,11 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
 }
 
 // out (doubles): [ppTps, ppStd, tgTps, tgStd]; returns backend description
-JNI_FN(jbyteArray, nativeBench)(JNIEnv * env, jobject, jlong handle, jint pp, jint tg, jint reps, jdoubleArray jout) {
+JNI_FN(jbyteArray, nativeBench)(JNIEnv * env, jobject, jlong handle, jint pp, jint tg, jint reps, jdoubleArray jout,
+                               jlong op_id) {
     return guarded<jbyteArray>(env, nullptr, [&]() -> jbyteArray {
         Session * s = as_session(handle);
-        g_cancel.store(false);
+        OpScope op(static_cast<int64_t>(op_id));
         const int n_ctx = static_cast<int>(llama_n_ctx(s->ctx));
         const int n_batch = static_cast<int>(llama_n_batch(s->ctx));
         pp = std::max(1, std::min(pp, n_ctx - 1));
@@ -628,7 +684,7 @@ JNI_FN(jbyteArray, nativeBench)(JNIEnv * env, jobject, jlong handle, jint pp, ji
         common_batch batch(s->ctx);
         double pp_sum = 0, pp_sq = 0, tg_sum = 0, tg_sq = 0;
         for (int r = 0; r < reps; ++r) {
-            if (g_cancel.load()) throw JniError("benchmark cancelled");
+            if (is_cancelled()) throw JniError("benchmark cancelled");
             llama_memory_clear(mem, false);
             const int64_t t0 = now_us();
             for (int i = 0; i < pp; i += n_batch) {
@@ -642,7 +698,7 @@ JNI_FN(jbyteArray, nativeBench)(JNIEnv * env, jobject, jlong handle, jint pp, ji
             llama_memory_clear(mem, false);
             const int64_t t2 = now_us();
             for (int i = 0; i < tg; ++i) {
-                if (g_cancel.load()) throw JniError("benchmark cancelled");
+                if (is_cancelled()) throw JniError("benchmark cancelled");
                 batch.clear();
                 batch.add(tok, i, 0, true);
                 if (llama_process(s->ctx, LLAMA_PROCESS_TYPE_DECODE, batch.get()) != 0) throw JniError("decode failed (tg)");

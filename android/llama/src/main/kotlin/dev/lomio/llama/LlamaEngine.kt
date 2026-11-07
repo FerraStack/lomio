@@ -1,6 +1,7 @@
 package dev.lomio.llama
 
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.ensureActive
@@ -27,6 +28,9 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
       .asCoroutineDispatcher()
 
   private val _state = MutableStateFlow<EngineState>(EngineState.Idle)
+
+  /** Every chat/bench call gets an id; stop() cancels up to the latest one (see lomio_jni.cpp). */
+  private val opIds = AtomicLong(0)
   override val state: StateFlow<EngineState> = _state.asStateFlow()
 
   // Only touched on [dispatcher].
@@ -62,7 +66,7 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
     }
 
   override suspend fun unload() {
-    NativeBridge.nativeStopIfLoaded()
+    NativeBridge.nativeStopIfLoaded(opIds.get())
     withContext(dispatcher) {
       freeCurrent()
       _state.value = EngineState.Idle
@@ -75,6 +79,7 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
     enableThinking: Boolean,
   ): Flow<GenerationEvent> =
     callbackFlow {
+        val opId = opIds.incrementAndGet()
         val job =
           launch(dispatcher) {
             val h = handle
@@ -115,6 +120,7 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
                 sampling.stop.filter { it.isNotEmpty() }.map { it.toByteArray() }.toTypedArray(),
                 callback,
                 stats,
+                opId,
               )
               trySend(GenerationEvent.Done(last.content, last.reasoning, stats.toStats()))
               close()
@@ -126,14 +132,14 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
           }
         awaitClose {
           // Collector cancelled (or finished): make sure native generation returns.
-          if (job.isActive) NativeBridge.nativeStop()
+          if (job.isActive) NativeBridge.nativeStop(opId)
         }
       }
       // Snapshots carry full state, so a slow collector only ever needs the latest one.
       .conflate()
 
   override fun stop() {
-    NativeBridge.nativeStopIfLoaded()
+    NativeBridge.nativeStopIfLoaded(opIds.get())
   }
 
   override suspend fun bench(pp: Int, tg: Int, repetitions: Int): BenchResult =
@@ -141,7 +147,7 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
       val h = handle
       val info = loadedInfo ?: throw LlamaException("no model loaded")
       val out = DoubleArray(4)
-      val backend = NativeBridge.nativeBench(h, pp, tg, repetitions, out).decodeToString()
+      val backend = NativeBridge.nativeBench(h, pp, tg, repetitions, out, opIds.incrementAndGet()).decodeToString()
       BenchResult(
         pp = pp,
         tg = tg,
@@ -189,10 +195,10 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
   }
 }
 
-private fun NativeBridge.nativeStopIfLoaded() {
-  // nativeStop only flips an atomic flag, but the library must be loaded to call it.
+private fun NativeBridge.nativeStopIfLoaded(uptoOpId: Long) {
+  // nativeStop only updates an atomic, but the library must be loaded to call it.
   try {
-    nativeStop()
+    nativeStop(uptoOpId)
   } catch (e: UnsatisfiedLinkError) {
     // Library not loaded yet, so nothing can be running.
   }
