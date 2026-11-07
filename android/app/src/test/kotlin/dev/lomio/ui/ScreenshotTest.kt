@@ -47,6 +47,11 @@ import dev.lomio.ui.bench.BenchUiState
 import dev.lomio.llama.BenchResult
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performSemanticsAction
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import dev.lomio.ui.settings.SettingsScreen
@@ -264,6 +269,64 @@ class ScreenshotTest {
   @Test fun chatStreamedLight() = shootStreamed(dark = false)
 
   @Test fun chatStreamedDark() = shootStreamed(dark = true)
+  private val tableChat =
+    chat.copy(
+      title = "Models for an 8 GB phone",
+      isGenerating = false,
+      messages =
+        listOf(
+          UiMessage("u1", MessageRole.USER, "Which models run well on a phone with 8 GB of RAM?"),
+          UiMessage(
+            "a1",
+            MessageRole.ASSISTANT,
+            """
+            Five good picks, smallest first:
+
+            | Model | Params | Quant | Size | Best for |
+            |---|---:|:---:|---:|---|
+            | Qwen3 1.7B | 1.7B | Q4_K_M | 1.1 GB | Quick answers, any phone |
+            | Llama 3.2 3B Instruct | 3.2B | Q4_0 | 1.9 GB | General chat |
+            | Gemma 3 4B | 3.9B | Q4_0 | 2.4 GB | Writing and summaries |
+            | Phi-4 mini | 3.8B | Q4_K_M | 2.5 GB | Reasoning, math |
+            | Qwen3 8B | 8.2B | Q4_0 | 4.7 GB | Best quality; tight on 8 GB |
+
+            Small tables fill the width:
+
+            | Setting | Value |
+            |---|---|
+            | Context | 4096 |
+            | Threads | 4 |
+            """.trimIndent(),
+            stats = GenerationStats(140, 0, 210, 610, 90.0, 17.1, StopReason.EOS),
+          ),
+        ),
+    )
+
+  @Test fun chatTableLight() = shoot("chat_table", dark = false) { ChatScreen(tableChat, ChatActions()) }
+
+  @Test fun chatTableDark() = shoot("chat_table", dark = true) { ChatScreen(tableChat, ChatActions()) }
+
+  /** Same chat with the wide table scrolled to its end: the fade moves to the start edge. */
+  private fun shootTableScrolled(dark: Boolean) {
+    compose.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) {
+        LomioTheme(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColor = false) {
+          ChatScreen(tableChat, ChatActions())
+        }
+      }
+    }
+    compose.waitForIdle()
+    compose
+      .onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange))
+      .onFirst()
+      .performSemanticsAction(SemanticsActions.ScrollBy) { it(10_000f, 0f) }
+    compose.waitForIdle()
+    compose.onRoot().captureRoboImage("build/outputs/roborazzi/chat_table_scrolled_${if (dark) "dark" else "light"}.png")
+  }
+
+  @Test fun chatTableScrolledLight() = shootTableScrolled(dark = false)
+
+  @Test fun chatTableScrolledDark() = shootTableScrolled(dark = true)
 
   private val loadFailed =
     ChatUiState(
