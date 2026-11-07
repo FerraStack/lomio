@@ -14,6 +14,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dev.lomio.data.db.MessageRole
 import dev.lomio.data.db.MessageStatus
 import dev.lomio.domain.GenerationSettings
+import dev.lomio.llama.EngineState
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.flow.first
@@ -81,6 +82,8 @@ class EndToEndChatTest {
     compose.onNodeWithContentDescription("Choose model").performClick()
     compose.waitUntil(10_000) { compose.onAllNodesWithText(MODEL_NAME).fetchSemanticsNodes().isNotEmpty() }
     compose.onAllNodesWithText(MODEL_NAME).onFirst().performClick()
+    // Capture while llama.cpp is loading (a few seconds on the emulator) if we catch it.
+    compose.waitUntil(30_000) { c.modelManager.engineState.value !is EngineState.Idle }
     screenshot("e2e_1_loading")
     compose.waitUntil(120_000) { c.modelManager.activeModelId.value != null }
 
@@ -88,7 +91,12 @@ class EndToEndChatTest {
     compose.onNode(hasSetTextAction() and hasText("Message")).performTextInput("Once upon a time")
     compose.onNodeWithContentDescription("Send").performClick()
 
-    compose.waitUntil(60_000) { c.chatService.state.value.streaming?.content?.isNotEmpty() == true || hasStats() }
+    // Mid-stream: wait until a few words are on screen (not just in state), then capture.
+    compose.waitUntil(90_000) { (c.chatService.state.value.streaming?.content?.length ?: 0) > 60 || hasStats() }
+    compose.waitUntil(10_000) {
+      val shown = c.chatService.state.value.streaming?.content?.take(20)
+      shown == null || compose.onAllNodesWithText(shown, substring = true).fetchSemanticsNodes().isNotEmpty()
+    }
     screenshot("e2e_2_streaming")
 
     compose.waitUntil(180_000) { !c.chatService.state.value.isGenerating }
