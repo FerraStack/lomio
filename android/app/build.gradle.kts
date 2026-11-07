@@ -106,4 +106,6 @@ dependencies {
   androidTestImplementation(libs.androidx.test.core)
   androidTestImplementation(libs.androidx.test.ext.junit)
   androidTestImplementation(libs.kotlinx.coroutines.test)
+  // Answers the system Photo Picker's intent in VisionChatTest.
+  androidTestImplementation(libs.androidx.test.espresso.intents)
 }

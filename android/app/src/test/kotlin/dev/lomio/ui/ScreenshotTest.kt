@@ -53,6 +53,13 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performSemanticsAction
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color as AndroidColor
+import android.graphics.Paint
+import android.graphics.Path
+import dev.lomio.data.AttachmentStore
+import org.junit.rules.TemporaryFolder
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import dev.lomio.ui.settings.SettingsScreen
 import dev.lomio.ui.theme.LomioTheme
@@ -89,6 +96,7 @@ import dev.lomio.ui.settings.TokenCheckState
 @Config(qualifiers = RobolectricDeviceQualifiers.Pixel7)
 class ScreenshotTest {
   @get:Rule val compose = createComposeRule()
+  @get:Rule val tmp = TemporaryFolder()
 
   private fun shoot(name: String, dark: Boolean, content: @Composable () -> Unit) {
     compose.setContent {
@@ -156,6 +164,17 @@ class ScreenshotTest {
             contextLength = 40960,
             loaded = true,
             fit = Fit.FITS,
+          ),
+          ModelCardState(
+            id = "v1",
+            name = "SmolVLM 256M Instruct",
+            subtitle = "ggml-org/SmolVLM-256M-Instruct-GGUF",
+            quant = "Q8_0",
+            sizeBytes = 278_824_384,
+            params = 256_000_000,
+            contextLength = 8192,
+            fit = Fit.FITS,
+            vision = true,
           ),
           ModelCardState(
             id = "m2",
@@ -661,6 +680,69 @@ class ScreenshotTest {
     )
 
   @Test fun hfRepoLight() = shoot("hf_repo", dark = false) { HfSearchScreen(hfRepo, HfActions()) }
+
+  private val smolRepo = "ggml-org/SmolVLM-256M-Instruct-GGUF"
+  private val hfVisionRepo =
+    HfUiState(
+      repo = smolRepo,
+      projector = HfFile(smolRepo, "mmproj-SmolVLM-256M-Instruct-Q8_0.gguf", 103_769_856, "7e"),
+      files =
+        listOf(
+          HfFileRow(HfFile(smolRepo, "mmproj-SmolVLM-256M-Instruct-Q8_0.gguf", 103_769_856, "7e"), null, false),
+          HfFileRow(HfFile(smolRepo, "SmolVLM-256M-Instruct-Q8_0.gguf", 175_054_528, "2a"), Fit.FITS, false, vision = true),
+          HfFileRow(HfFile(smolRepo, "mmproj-SmolVLM-256M-Instruct-f16.gguf", 190_031_616, "08"), null, false),
+          HfFileRow(HfFile(smolRepo, "SmolVLM-256M-Instruct-f16.gguf", 327_809_728, "2f"), Fit.FITS, false, vision = true),
+        ),
+    )
+
+  @Test fun hfRepoVisionLight() = shoot("hf_repo_vision", dark = false) { HfSearchScreen(hfVisionRepo, HfActions()) }
+
+  @Test fun hfRepoVisionDark() = shoot("hf_repo_vision", dark = true) { HfSearchScreen(hfVisionRepo, HfActions()) }
+
+  /** A small drawn scene (sky, sun, hill, house) saved through the real attachment store. */
+  private fun sceneImage(): String {
+    val w = 800
+    val h = 600
+    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    canvas.drawColor(AndroidColor.rgb(120, 180, 235))
+    paint.color = AndroidColor.rgb(250, 205, 60)
+    canvas.drawCircle(640f, 130f, 70f, paint)
+    paint.color = AndroidColor.rgb(90, 160, 80)
+    canvas.drawOval(-200f, 380f, 1000f, 900f, paint)
+    paint.color = AndroidColor.rgb(200, 70, 60)
+    canvas.drawRect(260f, 300f, 460f, 460f, paint)
+    paint.color = AndroidColor.rgb(110, 60, 40)
+    canvas.drawPath(Path().apply { moveTo(240f, 300f); lineTo(360f, 210f); lineTo(480f, 300f); close() }, paint)
+    val store = AttachmentStore(tmp.newFolder("attachments"))
+    return store.file(store.save(bmp)).absolutePath
+  }
+
+  private fun visionChat(image: String) =
+    ChatUiState(
+      conversationId = "c2",
+      title = "What is in this picture?",
+      modelName = "SmolVLM 256M Instruct",
+      modelStatus = ModelStatus.LOADED,
+      downloadedModels = listOf(model.copy(id = "v1", name = "SmolVLM 256M Instruct", vision = true)),
+      supportsVision = true,
+      attachments = listOf(image),
+      messages =
+        listOf(
+          UiMessage("u1", MessageRole.USER, "What is in this picture?", images = listOf(image)),
+          UiMessage(
+            "a1",
+            MessageRole.ASSISTANT,
+            "A small red house with a brown roof on a green hill, under a blue sky with a yellow sun.",
+            stats = GenerationStats(112, 0, 24, 2100, 61.0, 21.4, StopReason.EOS),
+          ),
+        ),
+    )
+
+  @Test fun chatVisionLight() = sceneImage().let { img -> shoot("chat_vision", dark = false) { ChatScreen(visionChat(img), ChatActions()) } }
+
+  @Test fun chatVisionDark() = sceneImage().let { img -> shoot("chat_vision", dark = true) { ChatScreen(visionChat(img), ChatActions()) } }
 
   private val bench =
     BenchUiState(

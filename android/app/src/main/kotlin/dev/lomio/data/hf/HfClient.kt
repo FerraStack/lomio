@@ -52,6 +52,32 @@ data class HfFile(
     get() = GgufNames.splitPart(fileName)
 }
 
+/**
+ * Vision projectors: a repo that ships an `mmproj*.gguf` next to its weights is a vision model
+ * (the llama.cpp / ggml-org convention). One projector serves every quant of the model.
+ */
+object Projectors {
+  /** Projector quant preference: Q8_0 is the usual small-and-good choice, then f16/bf16. */
+  private val PREFERENCE = listOf("Q8_0", "F16", "BF16")
+
+  /** The projector to download with a model from [files] (a repo listing), or null if none. */
+  fun pick(files: List<HfFile>): HfFile? {
+    val candidates = files.filter { it.isProjector && it.splitPart == null }
+    if (candidates.isEmpty()) return null
+    for (q in PREFERENCE) {
+      candidates.filter { projectorQuant(it.fileName) == q }.minByOrNull { it.sizeBytes }?.let { return it }
+    }
+    // Unknown naming: the smallest that isn't f32.
+    return candidates.filter { projectorQuant(it.fileName) != "F32" }.minByOrNull { it.sizeBytes }
+      ?: candidates.minByOrNull { it.sizeBytes }
+  }
+
+  /** "mmproj-model-f16.gguf" -> "F16"; "mmproj-SmolVLM-256M-Instruct-Q8_0.gguf" -> "Q8_0". */
+  fun projectorQuant(fileName: String): String? =
+    GgufNames.quant(fileName)
+      ?: Regex("(?i)[-_.](f16|bf16|f32)\\.gguf$").find(fileName)?.groupValues?.get(1)?.uppercase()
+}
+
 object GgufNames {
   private val QUANT =
     Regex(

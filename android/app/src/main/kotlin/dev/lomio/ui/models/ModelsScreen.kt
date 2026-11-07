@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FileOpen
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Storage
@@ -40,6 +42,7 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -51,6 +54,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.lomio.data.db.ModelState
@@ -74,6 +79,8 @@ data class ModelCardState(
   val loaded: Boolean = false,
   val loading: Boolean = false,
   val fit: Fit? = null,
+  /** Comes with a vision projector: can read images. */
+  val vision: Boolean = false,
 ) {
   val progress: Float
     get() = if (sizeBytes > 0) (bytesDone.toFloat() / sizeBytes).coerceIn(0f, 1f) else 0f
@@ -236,6 +243,23 @@ fun FitHint(fit: Fit?, modifier: Modifier = Modifier) {
   }
 }
 
+/** Small "Vision" pill for models that can read images. */
+@Composable
+fun VisionBadge(modifier: Modifier = Modifier) {
+  Surface(
+    color = MaterialTheme.colorScheme.tertiaryContainer,
+    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+    shape = RoundedCornerShape(50),
+    modifier = modifier.semantics(mergeDescendants = true) { contentDescription = "Vision: reads images" },
+  ) {
+    Row(Modifier.padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+      Icon(Icons.Outlined.Image, null, Modifier.size(14.dp))
+      Spacer(Modifier.size(4.dp))
+      Text("Vision", style = MaterialTheme.typography.labelSmall)
+    }
+  }
+}
+
 @Composable
 private fun SectionTitle(text: String) {
   Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
@@ -248,7 +272,19 @@ fun ModelCard(m: ModelCardState, actions: ModelsActions) {
   OutlinedCard(Modifier.fillMaxWidth().clickable { expanded = !expanded }) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Column {
-        Text(m.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Text(
+            m.name,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+          )
+          if (m.vision) {
+            Spacer(Modifier.size(8.dp))
+            VisionBadge()
+          }
+        }
         Text(m.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
       }
       FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

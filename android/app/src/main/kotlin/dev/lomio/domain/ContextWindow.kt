@@ -13,12 +13,18 @@ object ContextWindow {
   const val MESSAGE_OVERHEAD_TOKENS = 8
 
   /**
+   * Rough cost of one image: 64–256 tokens for most small vision models (SmolVLM, Gemma 3),
+   * more for dynamic-resolution ones. The native layer counts exactly.
+   */
+  const val IMAGE_TOKENS = 300
+
+  /**
    * Conservative token estimate: most tokenizers average 3–4 UTF-8 bytes per token for English
    * and fewer for code or CJK, so 2.5 bytes/token over-counts rather than under-counts.
    */
   fun estimateTokens(m: ChatMessage): Int {
     val bytes = m.content.toByteArray().size + (m.reasoning?.toByteArray()?.size ?: 0)
-    return (bytes / 2.5).toInt() + MESSAGE_OVERHEAD_TOKENS
+    return (bytes / 2.5).toInt() + MESSAGE_OVERHEAD_TOKENS + m.images.size * IMAGE_TOKENS
   }
 
   /** Room left for the reply: maxTokens (capped at half the context) or a quarter of it. */

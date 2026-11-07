@@ -42,10 +42,14 @@ stats line. arm64 phones are not tested yet:
   size, threads, batch size, mmap, and a chat template override from the GGUF / a preset / custom
   Jinja with a live preview), and per chat (sampler overrides, system prompt). The most specific
   level that sets a value wins.
+- Vision: models whose Hugging Face repo has an `mmproj` file get a "Vision" badge, and the
+  projector downloads with the weights. In chat, attach up to four images with the system Photo
+  Picker (no storage permission); llama.cpp's `libmtmd` encodes them. Images are kept in app
+  storage, scaled to at most 1024 px. The memory-fit check counts the projector.
 - A local benchmark (pp/tg tokens per second).
 
 Not done yet: chat export/import,
-split GGUF files, vision models, GPU backends, a tablet layout. Screenshots of every screen are
+split GGUF files, a vision projector for imported (local) models, GPU backends, a tablet layout. Screenshots of every screen are
 posted by CI on each pull request; README screenshots are a TODO.
 
 ## Architecture
@@ -59,7 +63,7 @@ android/
 │   ├── llama.cpp/         ← submodule
 │   └── src/main/
 │       ├── cpp/           CMakeLists.txt + lomio_jni.cpp (load, chat templates, streaming,
-│       │                  cancel, KV-prefix reuse, GGUF header reader, bench)
+│       │                  cancel, KV-prefix reuse, images via libmtmd, GGUF reader, bench)
 │       └── kotlin/        InferenceEngine (interface) + LlamaEngine (one native thread)
 └── app/                   Compose UI and app logic (package dev.lomio)
     ├── data/              Room DB (models, chats, messages, FTS), DataStore settings,
@@ -128,6 +132,9 @@ ccache.
      the next identical prompt reuses the tokens decoded before the stop
    - runs `StorageEndToEndTest`: open Storage through the UI, check the model's size on disk,
      remove a leftover file and temporary files, delete the model and check its file is gone
+   - runs `VisionChatTest` with SmolVLM-256M Q8_0 and its Q8_0 projector (279 MB, cached):
+     attach an image through the attach button (the Photo Picker's intent is answered by
+     espresso-intents), send a question and check for a non-empty answer
    - fails on any crash of `dev.lomio` in logcat
 3. **`screenshots-comment`** (pull requests): pushes the PNGs to the orphan `ci-screenshots`
    branch and creates or updates a single PR comment with a light/dark table.

@@ -158,6 +158,10 @@ interface MessageDao {
   )
   fun searchMessages(ftsQuery: String): Flow<List<SearchHit>>
 
+  /** Attachment lists of every message that has any (to find orphaned image files). */
+  @Query("SELECT attachments FROM message WHERE attachments IS NOT NULL")
+  suspend fun allAttachments(): List<String>
+
 
   /** Messages left in STREAMING state by a crash or process death. */
   @Query("UPDATE message SET status = 'STOPPED' WHERE status = 'STREAMING'")

@@ -8,6 +8,7 @@ import dev.lomio.data.db.ModelEntity
 import dev.lomio.data.db.ModelSettingsEntity
 import dev.lomio.data.db.ModelSource
 import dev.lomio.data.db.ModelState
+import dev.lomio.data.db.downloadBytes
 import dev.lomio.data.download.DownloadScheduler
 import dev.lomio.data.download.DownloadWorker
 import dev.lomio.data.download.InsufficientStorageException
@@ -57,11 +58,16 @@ class ModelRepository(
   fun hfDestination(repo: String, path: String): File =
     File(File(modelsDir, "hf_" + repo.replace("/", "_")), path.substringAfterLast("/"))
 
-  /** @throws InsufficientStorageException before anything is enqueued if the file can't fit. */
-  suspend fun download(file: HfFile): ModelEntity {
+  /**
+   * Queues [file] (and its vision projector [mmproj], if the repo has one) for download.
+   *
+   * @throws InsufficientStorageException before anything is enqueued if the files can't fit.
+   */
+  suspend fun download(file: HfFile, mmproj: HfFile? = null): ModelEntity {
     val existing = dao.findByHf(file.repo, file.path)
     val free = withContext(Dispatchers.IO) { modelsDir.apply { mkdirs() }.usableSpace }
-    val needed = file.sizeBytes - (existing?.bytesDone ?: 0) + DownloadWorker.STORAGE_MARGIN_BYTES
+    val total = file.sizeBytes + (mmproj?.sizeBytes ?: existing?.mmprojSize ?: 0)
+    val needed = total - (existing?.bytesDone ?: 0) + DownloadWorker.STORAGE_MARGIN_BYTES
     if (needed > free) throw InsufficientStorageException(needed, free)
     val model =
       (existing
@@ -79,9 +85,19 @@ class ModelRepository(
             quant = file.quant,
             createdAt = clock(),
           ))
+        .let { m ->
+          if (mmproj == null || m.mmprojFile != null) m
+          else
+            m.copy(
+              mmprojFile = mmproj.path,
+              mmprojPath = hfDestination(mmproj.repo, mmproj.path).absolutePath,
+              mmprojSize = mmproj.sizeBytes,
+              mmprojSha256 = mmproj.sha256,
+            )
+        }
         .copy(state = ModelState.QUEUED, errorMessage = null)
     dao.upsert(model)
-    downloads.enqueue(model.id, model.sizeBytes - model.bytesDone)
+    downloads.enqueue(model.id, model.downloadBytes - model.bytesDone)
     return model
   }
 
@@ -96,20 +112,24 @@ class ModelRepository(
   suspend fun resume(id: String) {
     val m = dao.get(id) ?: return
     dao.updateProgress(id, ModelState.QUEUED, m.bytesDone)
-    downloads.enqueue(id, m.sizeBytes - m.bytesDone)
+    downloads.enqueue(id, m.downloadBytes - m.bytesDone)
   }
 
-  /** Cancels any download and removes the model, its files and settings. */
+  /** Cancels any download and removes the model, its files (projector included) and settings. */
   suspend fun delete(id: String) {
     downloads.cancel(id)
     val m = dao.get(id) ?: return
     withContext(Dispatchers.IO) {
-      m.filePath?.let { path ->
+      // The projector may be shared with another quant of the same repo: keep it then.
+      val projectorShared =
+        m.mmprojPath != null && dao.observeAll().first().any { it.id != id && it.mmprojPath == m.mmprojPath }
+      listOfNotNull(m.filePath, m.mmprojPath.takeIf { !projectorShared }).forEach { path ->
         val f = File(path)
         // Only delete files we own (inside app storage).
         if (f.canonicalPath.startsWith(modelsDir.canonicalPath)) {
           f.delete()
           File("$path.part").delete()
+          File("$path.part.etag").delete()
           f.parentFile?.takeIf { it.list().isNullOrEmpty() }?.delete()
         }
       }
@@ -226,6 +246,7 @@ class ModelRepository(
         nHeadKv = m.nHeadKv,
         keyLength = m.keyLength,
         valueLength = m.valueLength,
+        projectorBytes = m.mmprojSize ?: 0,
       )
 
     /** llama.cpp `llama_ftype` → quant label. */

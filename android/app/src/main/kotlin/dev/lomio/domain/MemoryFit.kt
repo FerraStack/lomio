@@ -9,11 +9,19 @@ data class ModelShape(
   val nHeadKv: Int?,
   val keyLength: Int? = null,
   val valueLength: Int? = null,
+  /** Size of the vision projector (mmproj GGUF) loaded with the model; 0 = text only. */
+  val projectorBytes: Long = 0,
 )
 
-data class MemoryEstimate(val weightsBytes: Long, val kvCacheBytes: Long, val overheadBytes: Long) {
+data class MemoryEstimate(
+  val weightsBytes: Long,
+  val kvCacheBytes: Long,
+  val overheadBytes: Long,
+  /** Vision projector weights plus its image-encoder compute buffers. */
+  val projectorBytes: Long = 0,
+) {
   val totalBytes: Long
-    get() = weightsBytes + kvCacheBytes + overheadBytes
+    get() = weightsBytes + kvCacheBytes + overheadBytes + projectorBytes
 }
 
 enum class Fit { FITS, TIGHT, WONT_FIT }
@@ -55,11 +63,21 @@ object MemoryFit {
   fun kvCacheBytes(shape: ModelShape, nCtx: Int): Long =
     kvCacheBytesOrNull(shape, nCtx) ?: (shape.fileSizeBytes * UNKNOWN_SHAPE_KV_FRACTION).toLong()
 
+  /**
+   * Image-encoder compute buffers relative to the projector's size. A rule of thumb, not a
+   * measurement: the ViT activations for one image tile are of the same order as a fraction of
+   * its weights, so plan for half the file on top of the file itself.
+   */
+  const val PROJECTOR_BUFFER_FRACTION = 0.5
+
+  fun projectorBytes(shape: ModelShape): Long =
+    if (shape.projectorBytes <= 0) 0 else shape.projectorBytes + (shape.projectorBytes * PROJECTOR_BUFFER_FRACTION).toLong()
+
   fun estimate(shape: ModelShape, nCtx: Int): MemoryEstimate {
     val weights = shape.fileSizeBytes
     // Compute buffers grow with the model; 5% of the weights is a conservative rule of thumb.
     val overhead = BASE_OVERHEAD_BYTES + weights / 20
-    return MemoryEstimate(weights, kvCacheBytes(shape, nCtx), overhead)
+    return MemoryEstimate(weights, kvCacheBytes(shape, nCtx), overhead, projectorBytes(shape))
   }
 
   /**

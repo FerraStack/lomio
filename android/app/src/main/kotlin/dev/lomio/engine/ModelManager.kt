@@ -125,9 +125,11 @@ class ModelManager(
       }
       _pending.value = null
 
+      // The vision projector loads (and runs its warm-up encode) inside the guarded load too.
+      val mmproj = model.mmprojPath?.takeIf { File(it).exists() }
       crashGuard.beginLoad(modelId)
       try {
-        val info = engine.load(path, load.toLoadParams())
+        val info = engine.load(path, load.toLoadParams().copy(mmprojPath = mmproj))
         _activeModelId.value = modelId
         activeLoad = load
         _crashedModelId.value = null

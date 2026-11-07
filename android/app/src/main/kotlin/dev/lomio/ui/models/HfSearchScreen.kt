@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,7 +45,8 @@ import dev.lomio.data.hf.HfSort
 import dev.lomio.domain.Fit
 import dev.lomio.ui.components.Format
 
-data class HfFileRow(val file: HfFile, val fit: Fit?, val alreadyAdded: Boolean)
+/** @param vision the repo has a vision projector, which downloads together with this file. */
+data class HfFileRow(val file: HfFile, val fit: Fit?, val alreadyAdded: Boolean, val vision: Boolean = false)
 
 data class HfUiState(
   val query: String = "",
@@ -55,6 +57,8 @@ data class HfUiState(
   /** Non-null when a repo is open. */
   val repo: String? = null,
   val files: List<HfFileRow> = emptyList(),
+  /** The open repo's vision projector (mmproj), downloaded with whichever quant is picked. */
+  val projector: HfFile? = null,
   val filesLoading: Boolean = false,
 )
 
@@ -144,16 +148,41 @@ private fun RepoPane(state: HfUiState, actions: HfActions) {
       )
     }
     if (state.files.isEmpty()) item { Text("No GGUF files in this repo.", Modifier.padding(16.dp)) }
-    items(state.files, key = { it.file.path }) { row ->
+    state.projector?.let { p ->
+      item {
+        Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Outlined.Image, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+          Spacer(Modifier.size(8.dp))
+          Text(
+            "Vision model: the image projector (${Format.bytes(p.sizeBytes)}) downloads with the file you pick.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+      }
+    }
+    // Projector files aren't models on their own; they come along with a model file.
+    items(state.files.filter { !it.file.isProjector }, key = { it.file.path }) { row ->
       val f = row.file
       Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-          Text(f.fileName, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+              f.fileName,
+              style = MaterialTheme.typography.bodyMedium,
+              maxLines = 2,
+              overflow = TextOverflow.Ellipsis,
+              modifier = Modifier.weight(1f, fill = false),
+            )
+            if (row.vision) {
+              Spacer(Modifier.size(8.dp))
+              VisionBadge()
+            }
+          }
           val notes =
             listOfNotNull(
               Format.bytes(f.sizeBytes),
               when {
-                f.isProjector -> "Vision projector (not supported yet)"
                 f.splitPart != null -> "Split file (not supported yet)"
                 row.fit == Fit.FITS -> "Fits"
                 row.fit == Fit.TIGHT -> "Tight"
@@ -163,7 +192,7 @@ private fun RepoPane(state: HfUiState, actions: HfActions) {
             )
           Text(notes.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        val supported = !f.isProjector && f.splitPart == null
+        val supported = f.splitPart == null
         FilledTonalButton(onClick = { actions.onDownload(f) }, enabled = supported && !row.alreadyAdded) {
           Text(if (row.alreadyAdded) "Added" else "Download")
         }

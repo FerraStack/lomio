@@ -25,6 +25,10 @@ set(GGML_OPENMP           OFF CACHE BOOL "" FORCE)
 # CPU backends are separate loadable modules (libggml-cpu-*.so) picked at runtime by
 # ggml_backend_load_all_from_path(nativeLibraryDir).
 set(GGML_BACKEND_DL       ON  CACHE BOOL "" FORCE)
+# libmtmd (vision via an mmproj GGUF) without the rest of tools/. Video needs ffmpeg in a
+# subprocess, which Android doesn't allow (llama.cpp already turns LLAMA_SUBPROCESS off there).
+set(LLAMA_BUILD_MTMD      ON  CACHE BOOL "" FORCE)
+set(MTMD_VIDEO            OFF CACHE BOOL "" FORCE)
 
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     # One CPU module per Android ARM feature level (armv8.0 / 8.2+dotprod / 8.2+fp16 /
@@ -60,6 +64,7 @@ target_include_directories(lomio_jni PRIVATE
 target_link_libraries(lomio_jni
         llama
         llama-common
+        mtmd
         ggml
         android
         log)
