@@ -47,10 +47,13 @@ import dev.lomio.ui.settings.SettingsScreen
 import dev.lomio.ui.search.SearchActions
 import dev.lomio.ui.search.SearchScreen
 import dev.lomio.ui.search.SearchViewModel
+import dev.lomio.ui.storage.StorageActions
+import dev.lomio.ui.storage.StorageScreen
+import dev.lomio.ui.storage.StorageViewModel
 import kotlinx.coroutines.launch
 
 /** Screens on the back stack. The chat screen shows whichever conversation ChatViewModel has open. */
-enum class Screen { CHAT, SEARCH, MODELS, HF_SEARCH, SETTINGS, BENCHMARK, ABOUT }
+enum class Screen { CHAT, SEARCH, MODELS, HF_SEARCH, SETTINGS, BENCHMARK, ABOUT, STORAGE }
 
 private fun Screen.destination() =
   when (this) {
@@ -59,6 +62,7 @@ private fun Screen.destination() =
     Screen.SETTINGS -> Destination.SETTINGS
     Screen.BENCHMARK -> Destination.BENCHMARK
     Screen.ABOUT -> Destination.ABOUT
+    Screen.STORAGE -> Destination.MODELS
   }
 
 @Composable
@@ -241,6 +245,7 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
               onPause = { modelsVm.pause(it) },
               onResume = { modelsVm.resume(it) },
               onMessageShown = modelsVm::messageShown,
+              onStorage = { navigate(Screen.STORAGE) },
             ),
         )
       }
@@ -272,6 +277,21 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
         BenchmarkScreen(state, onOpenDrawer = { openDrawer() }, onProfile = benchVm::setProfile, onRun = { benchVm.run() })
       }
       Screen.ABOUT -> AboutScreen(BuildConfig.VERSION_NAME, onOpenDrawer = { openDrawer() })
+      Screen.STORAGE -> {
+        val storageVm: StorageViewModel = viewModel { StorageViewModel(container) }
+        val state by storageVm.state.collectAsStateWithLifecycle()
+        StorageScreen(
+          state = state,
+          actions =
+            StorageActions(
+              onBack = { backStack.removeAt(backStack.lastIndex) },
+              onDelete = storageVm::delete,
+              onClearCache = { storageVm.clearCache() },
+              onRemoveLeftovers = { storageVm.removeLeftovers() },
+              onMessageShown = storageVm::messageShown,
+            ),
+        )
+      }
     }
   }
 }

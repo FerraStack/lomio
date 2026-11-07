@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -108,6 +109,7 @@ class ModelsActions(
   val onPause: (String) -> Unit = {},
   val onResume: (String) -> Unit = {},
   val onMessageShown: () -> Unit = {},
+  val onStorage: () -> Unit = {},
 )
 
 /** Models screen per RESEARCH.md §9.2. */
@@ -129,7 +131,10 @@ fun ModelsScreen(state: ModelsUiState, actions: ModelsActions, modifier: Modifie
       TopAppBar(
         title = { Text("Models") },
         navigationIcon = { IconButton(onClick = actions.onOpenDrawer) { Icon(Icons.Outlined.Menu, "Open menu") } },
-        actions = { IconButton(onClick = actions.onSearchHf) { Icon(Icons.Outlined.Search, "Search Hugging Face") } },
+        actions = {
+          IconButton(onClick = actions.onSearchHf) { Icon(Icons.Outlined.Search, "Search Hugging Face") }
+          IconButton(onClick = actions.onStorage) { Icon(Icons.Outlined.Storage, "Storage") }
+        },
       )
     },
     floatingActionButton = {

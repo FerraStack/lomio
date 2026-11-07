@@ -25,6 +25,9 @@ stats line. arm64 phones are not tested yet:
   - Import of `.gguf` files.
   - A memory-fit check before each load that asks before loading a model that is tight on, or
     over, the memory budget.
+  - A Storage screen (Models → storage icon): each model's size on disk and when it was last
+    used, free space, one-step clean-up of models not loaded in 30 days, leftover files from
+    unfinished downloads or imports, and temporary files.
 - Engine: llama.cpp v0.9.0 through a small JNI layer.
   - Chat templates come from the GGUF via llama.cpp's own `common_chat`.
   - The KV cache is reused when the prompt starts the same as the last one.
@@ -115,6 +118,8 @@ ccache.
      taking screenshots along the way
    - runs `KvCacheReuseTest` on the same model: stop during prompt processing, then check that
      the next identical prompt reuses the tokens decoded before the stop
+   - runs `StorageEndToEndTest`: open Storage through the UI, check the model's size on disk,
+     remove a leftover file and temporary files, delete the model and check its file is gone
    - fails on any crash of `dev.lomio` in logcat
 3. **`screenshots-comment`** (pull requests): pushes the PNGs to the orphan `ci-screenshots`
    branch and creates or updates a single PR comment with a light/dark table.
