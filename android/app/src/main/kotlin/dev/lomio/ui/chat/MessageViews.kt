@@ -60,12 +60,13 @@ import java.util.Locale
 fun UserMessage(message: UiMessage, onCopy: () -> Unit, onEdit: () -> Unit, modifier: Modifier = Modifier) {
   var menu by remember { mutableStateOf(false) }
   BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+    val bubbleMaxWidth = maxWidth * 0.85f
     Box {
       Surface(
         color = MaterialTheme.colorScheme.secondaryContainer,
         shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
         modifier =
-          Modifier.widthIn(max = maxWidth * 0.85f)
+          Modifier.widthIn(max = bubbleMaxWidth)
             .clip(RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp))
             .combinedClickable(onClick = {}, onLongClick = { menu = true }),
       ) {
