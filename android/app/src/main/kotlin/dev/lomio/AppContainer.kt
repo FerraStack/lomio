@@ -5,6 +5,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import dev.lomio.data.ChatRepository
 import dev.lomio.data.GgufReader
 import dev.lomio.data.ModelRepository
+import dev.lomio.data.StorageRepository
 import dev.lomio.data.db.LomioDatabase
 import dev.lomio.data.download.DownloadScheduler
 import dev.lomio.data.download.ResumableDownloader
@@ -47,6 +48,12 @@ class AppContainer(context: Context) {
 
   val models = ModelRepository(appContext, db, downloads, GgufReader { Gguf.read(it) })
   val chats = ChatRepository(db)
+  val storage =
+    StorageRepository(
+      modelsDir = { models.modelsDir },
+      cacheDirs = { listOfNotNull(appContext.cacheDir, appContext.externalCacheDir) },
+      databaseFiles = { listOf("lomio.db", "lomio.db-wal", "lomio.db-shm").map(appContext::getDatabasePath) },
+    )
 
   val engine: InferenceEngine = LlamaEngine(appContext.applicationInfo.nativeLibraryDir)
   val crashGuard = CrashGuard(appContext.getSharedPreferences("crash_guard", Context.MODE_PRIVATE))

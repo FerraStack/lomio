@@ -21,7 +21,7 @@ sleep 6
 adb exec-out screencap -p > "$OUT/emulator_launch.png"
 adb shell am force-stop dev.lomio
 
-# 2. End-to-end chat with the real native engine.
+# 2. End-to-end chat with the real native engine, then the Storage screen on real files.
 adb push "$MODEL" /data/local/tmp/e2e-model.gguf
 adb shell chmod 644 /data/local/tmp/e2e-model.gguf
 set +e
@@ -31,7 +31,7 @@ adb shell am instrument -w -r \
   dev.lomio.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/instrumentation.txt"
 set -e
 
-for shot in e2e_1_loading e2e_2_streaming e2e_3_finished; do
+for shot in e2e_1_loading e2e_2_streaming e2e_3_finished e2e_4_storage e2e_5_storage_cleaned; do
   adb pull "/data/local/tmp/e2e/$shot.png" "$OUT/$shot.png" || echo "missing screenshot: $shot"
 done
 
