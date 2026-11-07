@@ -1,0 +1,24 @@
+# Gradle / Android
+.gradle/
+build/
+.kotlin/
+local.properties
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Models and other large local files: never commit
+*.gguf
+*.gguf.part
+*.bin
+*.safetensors
