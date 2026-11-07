@@ -54,6 +54,12 @@ if grep -A3 "FATAL EXCEPTION" "$OUT/logcat-full.txt" | grep -q "Process: dev.lom
   grep -nE -A20 "FATAL EXCEPTION|Fatal signal [0-9]+" "$OUT/logcat-full.txt" | head -80
   status=1
 fi
+# Prompt cache TTFT measurement (PromptCacheTtftTest) into the job summary.
+if grep -q "lomio-e2e-cache.*RESULT" "$OUT/logcat-full.txt"; then
+  line=$(grep "lomio-e2e-cache.*RESULT" "$OUT/logcat-full.txt" | tail -1 | sed 's/.*RESULT //')
+  echo "Prompt cache: $line"
+  [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "**Prompt cache:** $line" >> "$GITHUB_STEP_SUMMARY"
+fi
 if ! grep -qE "^OK \([0-9]+ tests?\)" "$OUT/instrumentation.txt"; then
   echo "::error::end-to-end instrumentation test failed"
   status=1

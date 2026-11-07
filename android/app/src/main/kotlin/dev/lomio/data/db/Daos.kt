@@ -95,6 +95,7 @@ interface ConversationDao {
   @Query("SELECT * FROM conversation WHERE id = :id") suspend fun get(id: String): ConversationEntity?
 
   @Query("SELECT * FROM conversation ORDER BY pinned DESC, updated_at DESC") suspend fun all(): List<ConversationEntity>
+  @Query("SELECT id FROM conversation") suspend fun allIds(): List<String>
 
   @Query("SELECT * FROM conversation WHERE id = :id")
   fun observe(id: String): Flow<ConversationEntity?>

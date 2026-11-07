@@ -49,9 +49,17 @@ class FakeEngine(var nCtx: Int = 4096) : InferenceEngine {
     state.value = EngineState.Idle
   }
 
-  override fun chat(messages: List<ChatMessage>, sampling: SamplingParams, enableThinking: Boolean): Flow<GenerationEvent> =
+  var lastCacheKey: String? = null
+
+  override fun chat(
+    messages: List<ChatMessage>,
+    sampling: SamplingParams,
+    enableThinking: Boolean,
+    cacheKey: String?,
+  ): Flow<GenerationEvent> =
     flow {
       chatCalls++
+      lastCacheKey = cacheKey
       lastMessages = messages
       emit(GenerationEvent.Update("Hel", ""))
       gate?.await()

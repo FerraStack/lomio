@@ -14,11 +14,15 @@
 #include <jni.h>
 #include <unistd.h>
 
+#include <sys/stat.h>
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <functional>
 #include <map>
 #include <memory>
@@ -28,6 +32,7 @@
 #include <string>
 #include <vector>
 
+#include "build-info.h"
 #include "chat.h"
 #include "common.h"
 #include "ggml-backend.h"
@@ -94,6 +99,10 @@ struct Session {
     // and why the GPU wasn't used when it was asked for (empty otherwise).
     std::string backend = "CPU";
     std::string gpu_note;
+
+    // Identity of what the KV cache contents depend on (model file, template, llama.cpp
+    // build); a saved prompt cache with another fingerprint is stale.
+    uint64_t fingerprint = 0;
 
     // Decoded images of the last turn, keyed by file path (re-tokenizing a chat re-uses them).
     std::map<std::string, mtmd::bitmap_ptr> bitmaps;
@@ -575,6 +584,117 @@ void open_model(Session * s, const LoadSpec & spec, ggml_backend_dev_t gpu, int 
     }
 }
 
+// ---------------------------------------------------------------------------
+// Prompt cache: seq 0's KV state saved to disk per chat (llama_state_seq_*), so reopening a
+// long chat restores it instead of re-processing the history. The state file is llama.cpp's
+// own seq-state format (tokens + KV); a small sidecar ("<file>.meta") holds what it doesn't:
+// our fingerprint, the cell positions (images/M-RoPE) and n_past.
+// ---------------------------------------------------------------------------
+
+constexpr uint32_t CACHE_META_MAGIC = 0x4D43504C;  // "LPCM"
+constexpr uint32_t CACHE_META_VERSION = 1;
+
+uint64_t fnv1a(uint64_t h, const void * data, size_t n) {
+    const auto * p = static_cast<const unsigned char *>(data);
+    for (size_t i = 0; i < n; ++i) {
+        h ^= p[i];
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+uint64_t fnv1a(uint64_t h, const std::string & s) { return fnv1a(h, s.data(), s.size()); }
+
+uint64_t compute_fingerprint(Session * s, const std::string & path) {
+    uint64_t h = 1469598103934665603ULL;
+    h = fnv1a(h, path);
+    struct stat st{};
+    if (stat(path.c_str(), &st) == 0) {
+        const int64_t size = st.st_size, mtime = st.st_mtime;
+        h = fnv1a(h, &size, sizeof(size));
+        h = fnv1a(h, &mtime, sizeof(mtime));
+    }
+    char desc[256];
+    llama_model_desc(s->model, desc, sizeof(desc));
+    h = fnv1a(h, std::string(desc));
+    const uint64_t n_params = llama_model_n_params(s->model);
+    h = fnv1a(h, &n_params, sizeof(n_params));
+    try {
+        h = fnv1a(h, common_chat_templates_source(s->tmpls.get()));
+    } catch (...) {}
+    h = fnv1a(h, std::string(llama_commit()));
+    return h;
+}
+
+// Writes seq 0 to `path` (atomically, via .tmp + rename). Returns the state file's size,
+// 0 if there is nothing to save, -1 if it would exceed max_bytes (> 0).
+int64_t save_prompt_cache(Session * s, const std::string & path, int64_t max_bytes) {
+    if (s->cached.empty()) return 0;
+    const size_t size = llama_state_seq_get_size(s->ctx, 0);
+    if (max_bytes > 0 && static_cast<int64_t>(size) > max_bytes) return -1;
+    const std::string tmp = path + ".tmp";
+    const size_t written = llama_state_seq_save_file(s->ctx, tmp.c_str(), 0, s->cached.data(), s->cached.size());
+    if (written == 0) {
+        std::remove(tmp.c_str());
+        throw JniError("failed to save the prompt cache");
+    }
+    {
+        std::ofstream meta(path + ".meta.tmp", std::ios::binary | std::ios::trunc);
+        const uint64_t n = s->cached.size();
+        meta.write(reinterpret_cast<const char *>(&CACHE_META_MAGIC), sizeof(CACHE_META_MAGIC));
+        meta.write(reinterpret_cast<const char *>(&CACHE_META_VERSION), sizeof(CACHE_META_VERSION));
+        meta.write(reinterpret_cast<const char *>(&s->fingerprint), sizeof(s->fingerprint));
+        meta.write(reinterpret_cast<const char *>(&n), sizeof(n));
+        meta.write(reinterpret_cast<const char *>(s->cached_pos.data()), static_cast<std::streamsize>(n * sizeof(llama_pos)));
+        meta.write(reinterpret_cast<const char *>(&s->n_past), sizeof(s->n_past));
+        if (!meta) throw JniError("failed to write the prompt cache");
+    }
+    if (std::rename(tmp.c_str(), path.c_str()) != 0 || std::rename((path + ".meta.tmp").c_str(), (path + ".meta").c_str()) != 0) {
+        throw JniError("failed to store the prompt cache");
+    }
+    return static_cast<int64_t>(written);
+}
+
+// Replaces seq 0 with the cache at `path`. Returns the number of restored cells, or -1 if the
+// cache is missing, stale (other model/template/build) or unreadable (the caller deletes it).
+int64_t load_prompt_cache(Session * s, const std::string & path) {
+    std::ifstream meta(path + ".meta", std::ios::binary);
+    if (!meta) return -1;
+    uint32_t magic = 0, version = 0;
+    uint64_t fp = 0, n = 0;
+    meta.read(reinterpret_cast<char *>(&magic), sizeof(magic));
+    meta.read(reinterpret_cast<char *>(&version), sizeof(version));
+    meta.read(reinterpret_cast<char *>(&fp), sizeof(fp));
+    meta.read(reinterpret_cast<char *>(&n), sizeof(n));
+    if (!meta || magic != CACHE_META_MAGIC || version != CACHE_META_VERSION || fp != s->fingerprint) {
+        LOGI("prompt cache %s is stale or unreadable", path.c_str());
+        return -1;
+    }
+    const size_t n_ctx = llama_n_ctx(s->ctx);
+    if (n == 0 || n >= n_ctx) return -1;
+    std::vector<llama_pos> pos(n);
+    llama_pos n_past = 0;
+    meta.read(reinterpret_cast<char *>(pos.data()), static_cast<std::streamsize>(n * sizeof(llama_pos)));
+    meta.read(reinterpret_cast<char *>(&n_past), sizeof(n_past));
+    if (!meta) return -1;
+
+    llama_memory_t mem = llama_get_memory(s->ctx);
+    llama_memory_seq_rm(mem, 0, -1, -1);
+    s->clear_cached();
+    std::vector<llama_token> tokens(n_ctx);
+    size_t n_read = 0;
+    const size_t ok = llama_state_seq_load_file(s->ctx, path.c_str(), 0, tokens.data(), tokens.size(), &n_read);
+    if (ok == 0 || n_read != n) {
+        llama_memory_clear(mem, true);
+        return -1;
+    }
+    tokens.resize(n_read);
+    s->cached = std::move(tokens);
+    s->cached_pos = std::move(pos);
+    s->n_past = n_past;
+    return static_cast<int64_t>(n_read);
+}
+
 std::string model_meta(const llama_model * model, const char * key) {
     char buf[256];
     const int32_t n = llama_model_meta_val_str(model, key, buf, sizeof(buf));
@@ -650,6 +770,7 @@ JNI_FN(jlong, nativeLoad)(JNIEnv * env, jobject, jbyteArray jpath, jint n_ctx, j
                 s->tmpls = common_chat_templates_init(s->model, CHATML_TEMPLATE);
             }
         }
+        s->fingerprint = compute_fingerprint(s.get(), path);
 
         // Vision projector. Its warm-up encode runs here too, under the crash-loop guard.
         if (!mmproj.empty()) {
@@ -779,6 +900,29 @@ JNI_FN(jboolean, nativeReadGguf)(JNIEnv * env, jobject, jbyteArray jpath, jlongA
         env->SetObjectArrayElement(jstrings, 2, read_gguf_str(env, g, "general.size_label"));
         env->SetObjectArrayElement(jstrings, 3, read_gguf_str(env, g, "tokenizer.chat_template"));
         return JNI_TRUE;
+    });
+}
+
+// Saves seq 0 (the KV cache of the current chat) to `path`; see save_prompt_cache.
+JNI_FN(jlong, nativeSaveCache)(JNIEnv * env, jobject, jlong handle, jbyteArray jpath, jlong max_bytes) {
+    return guarded<jlong>(env, 0, [&]() -> jlong {
+        Session * s = as_session(handle);
+        const int64_t t0 = now_us();
+        const int64_t r = save_prompt_cache(s, bytes_to_string(env, jpath), max_bytes);
+        LOGI("prompt cache save: %lld bytes, %zu cells, %lld ms", static_cast<long long>(r), s->cached.size(),
+             static_cast<long long>((now_us() - t0) / 1000));
+        return r;
+    });
+}
+
+// Restores seq 0 from `path`; see load_prompt_cache.
+JNI_FN(jlong, nativeLoadCache)(JNIEnv * env, jobject, jlong handle, jbyteArray jpath) {
+    return guarded<jlong>(env, -1, [&]() -> jlong {
+        Session * s = as_session(handle);
+        const int64_t t0 = now_us();
+        const int64_t r = load_prompt_cache(s, bytes_to_string(env, jpath));
+        LOGI("prompt cache load: %lld cells, %lld ms", static_cast<long long>(r), static_cast<long long>((now_us() - t0) / 1000));
+        return r;
     });
 }
 

@@ -34,11 +34,16 @@ interface InferenceEngine {
    * generation and emits parsed snapshots. Reuses the KV cache for the longest common token
    * prefix with the previous call, so switching conversations never leaks state.
    * Cancelling the collector, or calling [stop], ends generation promptly.
+   *
+   * @param cacheKey identifies the conversation (e.g. its id). When the engine switches to
+   *   another key, the KV cache of the previous one is saved to disk and this one's is restored
+   *   if present (prompt cache), so returning to a long chat doesn't re-process its history.
    */
   fun chat(
     messages: List<ChatMessage>,
     sampling: SamplingParams = SamplingParams(),
     enableThinking: Boolean = true,
+    cacheKey: String? = null,
   ): Flow<GenerationEvent>
 
   /** Requests the running generation to stop; thread-safe, returns immediately. */

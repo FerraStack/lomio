@@ -21,6 +21,7 @@ import dev.lomio.engine.ModelManager
 import dev.lomio.llama.Gguf
 import dev.lomio.llama.InferenceEngine
 import dev.lomio.llama.LlamaEngine
+import dev.lomio.llama.PromptCache
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
@@ -62,10 +63,13 @@ class AppContainer(context: Context) {
   val chats = ChatRepository(db, attachmentPath = { attachments.file(it).absolutePath })
   val archive = ChatArchive(db)
 
+  /** Per-chat KV caches (in cacheDir: Android may clear them, which only costs speed). */
+  val promptCache = PromptCache(File(appContext.cacheDir, "prompt-cache"))
   val engine: InferenceEngine =
     LlamaEngine(
       appContext.applicationInfo.nativeLibraryDir,
       gpuKernelCacheDir = java.io.File(appContext.cacheDir, "opencl-kernels").apply { mkdirs() }.absolutePath,
+      promptCache = promptCache,
     )
   val crashGuard = CrashGuard(appContext.getSharedPreferences("crash_guard", Context.MODE_PRIVATE))
   val memory = AndroidMemoryProvider(appContext)

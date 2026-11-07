@@ -80,6 +80,18 @@ internal object NativeBridge {
   external fun nativeReadGguf(path: ByteArray, longs: LongArray, strings: Array<ByteArray?>): Boolean
 
   /**
+   * Saves seq 0 (the current chat's KV cache) to [path]. Returns the file size, 0 if there was
+   * nothing to save, -1 if it would be larger than [maxBytes].
+   */
+  external fun nativeSaveCache(handle: Long, path: ByteArray, maxBytes: Long): Long
+
+  /**
+   * Replaces seq 0 with the cache at [path]. Returns the restored cell count, or -1 if the cache
+   * is stale (other model file, template or llama.cpp build) or unreadable.
+   */
+  external fun nativeLoadCache(handle: Long, path: ByteArray): Long
+
+  /**
    * Thread-safe: cancels every chat/bench operation whose op id is ≤ [uptoOpId], including one
    * that hasn't reached native code yet.
    */
