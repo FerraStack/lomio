@@ -43,13 +43,20 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeBlock
-import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeFence
+import com.mikepenz.markdown.compose.elements.MarkdownCodeBlock
+import com.mikepenz.markdown.compose.elements.MarkdownCodeFence
+import com.mikepenz.markdown.model.NoOpImageTransformerImpl
+import com.mikepenz.markdown.model.State
+import com.mikepenz.markdown.model.markdownAnimations
+import com.mikepenz.markdown.model.markdownAnnotator
+import com.mikepenz.markdown.model.markdownExtendedSpans
+import com.mikepenz.markdown.model.markdownInlineContent
+import org.intellij.markdown.MarkdownElementTypes
+import org.intellij.markdown.ast.CompositeASTNode
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import dev.lomio.ui.components.CodePalette
-import dev.snipme.highlights.Highlights
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontFamily
@@ -104,7 +111,7 @@ fun AssistantMessage(
   Column(modifier.fillMaxWidth()) {
     message.reasoning?.takeIf { it.isNotBlank() }?.let { ReasoningBlock(it, streaming) }
     if (message.content.isNotEmpty()) {
-      SelectionContainer { MarkdownText(message.content) }
+      SelectionContainer { MarkdownText(message.content, streaming = streaming) }
     } else if (streaming && message.reasoning.isNullOrBlank()) {
       TypingIndicator()
     }
@@ -132,57 +139,97 @@ fun AssistantMessage(
   }
 }
 
+/**
+ * Assistant Markdown.
+ *
+ * A reply that is [streaming] when it is first shown is parsed incrementally ([IncrementalMarkdown]):
+ * each update re-parses only the unfinished last block, finished blocks are skipped by Compose,
+ * and the same parser stays in use after the reply finishes, so there is no re-parse or flash at
+ * the end. Replies loaded from history are parsed once, off the main thread.
+ */
 @Composable
-fun MarkdownText(content: String, modifier: Modifier = Modifier) {
-  // retainState avoids flashing back to "loading" on every streamed update.
-  val state = rememberMarkdownState(content, retainState = true)
+fun MarkdownText(content: String, modifier: Modifier = Modifier, streaming: Boolean = false) {
   val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
   val palette = CodePalette.forDarkTheme(dark)
   val type = MaterialTheme.typography
-  Markdown(
-    markdownState = state,
-    modifier = modifier.fillMaxWidth(),
-    colors =
-      markdownColor(
-        codeBackground = Color(0xFF000000.toInt() or palette.background),
-        inlineCodeBackground = MaterialTheme.colorScheme.surfaceContainerHigh,
-      ),
-    typography =
-      markdownTypography(
-        // Chat-sized headings: the library defaults to display styles.
-        h1 = type.titleLarge,
-        h2 = type.titleMedium,
-        h3 = type.titleSmall,
-        h4 = type.titleSmall,
-        h5 = type.labelLarge,
-        h6 = type.labelLarge,
-        code = type.bodyMedium.copy(fontFamily = FontFamily.Monospace, color = Color(0xFF000000.toInt() or palette.plain)),
-      ),
-    components =
-      markdownComponents(
-        codeFence = {
-          MarkdownHighlightedCodeFence(
-            content = it.content,
-            node = it.node,
-            style = it.typography.code,
-            // One builder per block: Highlights.Builder is mutable and blocks highlight in parallel.
-            highlightsBuilder = remember(palette) { Highlights.Builder().theme(palette.syntaxTheme()) },
-            showHeader = true,
-          )
-        },
-        codeBlock = {
-          MarkdownHighlightedCodeBlock(
-            content = it.content,
-            node = it.node,
-            style = it.typography.code,
-            // One builder per block: Highlights.Builder is mutable and blocks highlight in parallel.
-            highlightsBuilder = remember(palette) { Highlights.Builder().theme(palette.syntaxTheme()) },
-            showHeader = true,
-          )
-        },
-      ),
-  )
+  val colors =
+    markdownColor(
+      codeBackground = Color(0xFF000000.toInt() or palette.background),
+      inlineCodeBackground = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+  val typography =
+    markdownTypography(
+      // Chat-sized headings: the library defaults to display styles.
+      h1 = type.titleLarge,
+      h2 = type.titleMedium,
+      h3 = type.titleSmall,
+      h4 = type.titleSmall,
+      h5 = type.labelLarge,
+      h6 = type.labelLarge,
+      code = type.bodyMedium.copy(fontFamily = FontFamily.Monospace, color = Color(0xFF000000.toInt() or palette.plain)),
+    )
+  // The renderer's defaults are new objects on every call, and several are provided through
+  // static composition locals: a new instance would recompose every block on every token.
+  // Keep the first instance of each.
+  val components = remember(palette) { lomioMarkdownComponents(palette) }
+  val newAnnotator = markdownAnnotator()
+  val annotator = remember { newAnnotator }
+  val newSpans = markdownExtendedSpans()
+  val extendedSpans = remember { newSpans }
+  val newInline = markdownInlineContent()
+  val inlineContent = remember { newInline }
+  val newAnimations = markdownAnimations()
+  val animations = remember { newAnimations }
+  val imageTransformer = remember { NoOpImageTransformerImpl() }
+
+  val incremental = remember { if (streaming) IncrementalMarkdown() else null }
+  if (incremental != null) {
+    val snapshot = remember(content) { incremental.update(content) }
+    val placeholder = remember { State.Success(CompositeASTNode(MarkdownElementTypes.MARKDOWN_FILE, emptyList()), "", false) }
+    Markdown(
+      state = placeholder,
+      colors = colors,
+      typography = typography,
+      modifier = modifier.fillMaxWidth(),
+      imageTransformer = imageTransformer,
+      annotator = annotator,
+      extendedSpans = extendedSpans,
+      inlineContent = inlineContent,
+      components = components,
+      animations = animations,
+      success = { _, c, m -> IncrementalMarkdownColumn(snapshot, c, m) },
+    )
+  } else {
+    // retainState avoids flashing back to "loading" if the content changes.
+    val state = rememberMarkdownState(content, retainState = true)
+    Markdown(
+      markdownState = state,
+      colors = colors,
+      typography = typography,
+      modifier = modifier.fillMaxWidth(),
+      imageTransformer = imageTransformer,
+      annotator = annotator,
+      extendedSpans = extendedSpans,
+      inlineContent = inlineContent,
+      components = components,
+      animations = animations,
+    )
+  }
 }
+
+private fun lomioMarkdownComponents(palette: CodePalette) =
+  markdownComponents(
+    codeFence = {
+      MarkdownCodeFence(it.content, it.node, it.typography.code) { code, language, style ->
+        HighlightedCode(code, language, style, palette)
+      }
+    },
+    codeBlock = {
+      MarkdownCodeBlock(it.content, it.node, it.typography.code) { code, language, style ->
+        HighlightedCode(code, language, style, palette)
+      }
+    },
+  )
 
 @Composable
 private fun ReasoningBlock(text: String, streaming: Boolean) {

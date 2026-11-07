@@ -2,6 +2,9 @@ package dev.lomio.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
@@ -206,6 +209,61 @@ class ScreenshotTest {
   @Test fun chatMarkdownLight() = shoot("chat_markdown", dark = false) { ChatScreen(markdownChat, ChatActions()) }
 
   @Test fun chatMarkdownDark() = shoot("chat_markdown", dark = true) { ChatScreen(markdownChat, ChatActions()) }
+
+  /**
+   * A reply streamed in token-sized updates through the incremental parser (issue #2), captured
+   * mid-stream inside an open code fence: earlier blocks are final, the fence is still growing.
+   */
+  private fun shootStreamed(dark: Boolean) {
+    val reply =
+      """
+      Here is a small **LRU cache** in Kotlin. It keeps the most recently used entries and drops the oldest one when full.
+
+      1. `LinkedHashMap` with `accessOrder = true` moves an entry to the end on every read.
+      2. `removeEldestEntry` evicts once the size passes the limit.
+
+      ```kotlin
+      class LruCache<K, V>(private val max: Int) :
+        LinkedHashMap<K, V>(16, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<K, V>) =
+          size > max
+      }
+
+      fun main() {
+        val cache = LruCache<String, Int>(2)
+        cache["a"] = 1
+        cache["b"] = 2
+      """.trimIndent()
+    var content by mutableStateOf("")
+    compose.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) {
+        LomioTheme(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColor = false) {
+          ChatScreen(
+            chat.copy(
+              title = "LRU cache in Kotlin",
+              messages =
+                listOf(
+                  UiMessage("u1", MessageRole.USER, "Write a tiny LRU cache in Kotlin."),
+                  UiMessage("a1", MessageRole.ASSISTANT, content, status = MessageStatus.STREAMING),
+                ),
+            ),
+            ChatActions(),
+          )
+        }
+      }
+    }
+    var i = 0
+    while (i < reply.length) {
+      i = minOf(reply.length, i + 24)
+      content = reply.substring(0, i)
+      compose.waitForIdle()
+    }
+    compose.onRoot().captureRoboImage("build/outputs/roborazzi/chat_streamed_${if (dark) "dark" else "light"}.png")
+  }
+
+  @Test fun chatStreamedLight() = shootStreamed(dark = false)
+
+  @Test fun chatStreamedDark() = shootStreamed(dark = true)
 
   private val loadFailed =
     ChatUiState(
