@@ -12,6 +12,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.PermanentNavigationDrawer
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -56,7 +59,17 @@ fun AdaptiveDrawerScaffold(
   BoxWithConstraints {
     if (usePermanentDrawer(maxWidth, maxHeight)) {
       CompositionLocalProvider(LocalPermanentDrawer provides true) {
-        PermanentNavigationDrawer(drawerContent = drawerContent) { movable() }
+        PermanentNavigationDrawer(
+          drawerContent = {
+            // A hairline keeps the drawer and the content apart when both use the surface color.
+            Row {
+              drawerContent()
+              VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+          },
+        ) {
+          movable()
+        }
       }
     } else {
       ModalNavigationDrawer(drawerState = drawerState, gesturesEnabled = gesturesEnabled, drawerContent = drawerContent) {
