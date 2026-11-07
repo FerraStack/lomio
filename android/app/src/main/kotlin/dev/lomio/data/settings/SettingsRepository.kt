@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import dev.lomio.domain.GenerationSettings
 import dev.lomio.domain.LoadSettings
@@ -21,6 +22,8 @@ data class AppSettings(
   val showStats: Boolean = true,
   val keepScreenOn: Boolean = true,
   val autoLoadLastModel: Boolean = true,
+  /** Unload the model after this many minutes in the background; 0 = never. */
+  val unloadAfterMinutes: Int = 10,
   val lastModelId: String? = null,
   // TODO(M2): move the token to Android Keystore-backed storage (RESEARCH.md §7).
   val hfToken: String = "",
@@ -46,6 +49,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
       prefs[SHOW_STATS] = next.showStats
       prefs[KEEP_SCREEN_ON] = next.keepScreenOn
       prefs[AUTO_LOAD] = next.autoLoadLastModel
+      prefs[UNLOAD_AFTER] = next.unloadAfterMinutes
       if (next.lastModelId != null) prefs[LAST_MODEL] = next.lastModelId else prefs.remove(LAST_MODEL)
       prefs[HF_TOKEN] = next.hfToken
       prefs[GENERATION] = SettingsJson.encodeGen(next.generation)!!
@@ -62,6 +66,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
       showStats = p[SHOW_STATS] ?: d.showStats,
       keepScreenOn = p[KEEP_SCREEN_ON] ?: d.keepScreenOn,
       autoLoadLastModel = p[AUTO_LOAD] ?: d.autoLoadLastModel,
+      unloadAfterMinutes = p[UNLOAD_AFTER] ?: d.unloadAfterMinutes,
       lastModelId = p[LAST_MODEL],
       hfToken = p[HF_TOKEN] ?: d.hfToken,
       generation = d.generation.overlay(SettingsJson.decodeGen(p[GENERATION])),
@@ -76,6 +81,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     val SHOW_STATS = booleanPreferencesKey("show_stats")
     val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
     val AUTO_LOAD = booleanPreferencesKey("auto_load_last_model")
+    val UNLOAD_AFTER = intPreferencesKey("unload_after_minutes")
     val LAST_MODEL = stringPreferencesKey("last_model_id")
     val HF_TOKEN = stringPreferencesKey("hf_token")
     val GENERATION = stringPreferencesKey("generation_json")

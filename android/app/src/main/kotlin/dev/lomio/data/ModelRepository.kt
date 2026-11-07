@@ -9,6 +9,8 @@ import dev.lomio.data.db.ModelSettingsEntity
 import dev.lomio.data.db.ModelSource
 import dev.lomio.data.db.ModelState
 import dev.lomio.data.download.DownloadScheduler
+import dev.lomio.data.download.DownloadWorker
+import dev.lomio.data.download.InsufficientStorageException
 import dev.lomio.data.hf.GgufNames
 import dev.lomio.data.hf.HfFile
 import dev.lomio.domain.GenerationSettings
@@ -38,8 +40,12 @@ class ModelRepository(
 ) {
   private val dao = db.models()
 
+  /**
+   * In noBackupFilesDir: multi-GB models must never go into cloud backup or device-to-device
+   * transfer (see also res/xml/data_extraction_rules.xml).
+   */
   val modelsDir: File
-    get() = File(context.filesDir, "models")
+    get() = File(context.noBackupFilesDir, "models")
 
   fun observeModels(): Flow<List<ModelEntity>> = dao.observeAll()
 
@@ -51,8 +57,12 @@ class ModelRepository(
   fun hfDestination(repo: String, path: String): File =
     File(File(modelsDir, "hf_" + repo.replace("/", "_")), path.substringAfterLast("/"))
 
+  /** @throws InsufficientStorageException before anything is enqueued if the file can't fit. */
   suspend fun download(file: HfFile): ModelEntity {
     val existing = dao.findByHf(file.repo, file.path)
+    val free = withContext(Dispatchers.IO) { modelsDir.apply { mkdirs() }.usableSpace }
+    val needed = file.sizeBytes - (existing?.bytesDone ?: 0) + DownloadWorker.STORAGE_MARGIN_BYTES
+    if (needed > free) throw InsufficientStorageException(needed, free)
     val model =
       (existing
           ?: ModelEntity(
@@ -60,7 +70,7 @@ class ModelRepository(
             source = ModelSource.HF,
             hfRepo = file.repo,
             hfFile = file.path,
-            hfRevision = "main",
+            hfRevision = file.revision,
             displayName = GgufNames.displayName(file.fileName),
             filePath = hfDestination(file.repo, file.path).absolutePath,
             sizeBytes = file.sizeBytes,
@@ -145,6 +155,24 @@ class ModelRepository(
       val withMeta = withMetadata(model, dest)
       dao.upsert(withMeta)
       withMeta
+    }
+
+  /** Registers a GGUF that is already inside app storage (used by tests and the importer). */
+  suspend fun registerLocalFile(file: File, displayName: String = GgufNames.displayName(file.name)): ModelEntity =
+    withContext(Dispatchers.IO) {
+      val model =
+        ModelEntity(
+          id = UUID.randomUUID().toString(),
+          source = ModelSource.LOCAL,
+          displayName = displayName,
+          filePath = file.absolutePath,
+          sizeBytes = file.length(),
+          state = ModelState.READY,
+          bytesDone = file.length(),
+          quant = GgufNames.quant(file.name),
+          createdAt = clock(),
+        )
+      withMetadata(model, file).also { dao.upsert(it) }
     }
 
   /** Fills cached GGUF metadata; a broken header is reported but doesn't fail the import. */

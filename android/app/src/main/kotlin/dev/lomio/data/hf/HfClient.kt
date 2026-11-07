@@ -36,6 +36,8 @@ data class HfFile(
   val sizeBytes: Long,
   /** LFS oid = sha256 of the file content. */
   val sha256: String?,
+  /** Commit the listing came from; downloads are pinned to it. Null = resolve at download. */
+  val revision: String? = null,
 ) {
   val fileName: String
     get() = path.substringAfterLast('/')
@@ -111,21 +113,32 @@ class HfClient(
     }
   }
 
-  /** GGUF files in a repo with sizes and sha256, sorted by size. */
+  /** Commit sha that [revision] (a branch or tag) currently points to. */
+  suspend fun commitSha(repo: String, revision: String = "main"): String {
+    val url =
+      base().newBuilder().addPathSegments("api/models").addPathSegments(repo).addPathSegment("revision").addPathSegment(revision).build()
+    return json.decodeFromString<ApiRevision>(get(url)).sha
+  }
+
+  /**
+   * GGUF files in a repo with sizes and sha256, sorted by size, listed at the commit [revision]
+   * currently resolves to (so a later download fetches exactly these bytes).
+   */
   suspend fun ggufFiles(repo: String, revision: String = "main"): List<HfFile> {
+    val sha = runCatching { commitSha(repo, revision) }.getOrNull()
     val url =
       base()
         .newBuilder()
         .addPathSegments("api/models")
         .addPathSegments(repo)
         .addPathSegment("tree")
-        .addPathSegment(revision)
+        .addPathSegment(sha ?: revision)
         .addQueryParameter("recursive", "true")
         .build()
     val entries = json.decodeFromString<List<ApiTreeEntry>>(get(url))
     return entries
       .filter { it.type == "file" && it.path.endsWith(".gguf", ignoreCase = true) }
-      .map { HfFile(repo, it.path, it.lfs?.size ?: it.size ?: 0, it.lfs?.oid) }
+      .map { HfFile(repo, it.path, it.lfs?.size ?: it.size ?: 0, it.lfs?.oid, sha) }
       .sortedBy { it.sizeBytes }
   }
 
@@ -140,8 +153,8 @@ class HfClient(
       .toString()
 
   /** Headers for a download request to [url]; adds the token only for huggingface.co. */
-  fun authHeaders(url: String): Map<String, String> {
-    val t = token()?.takeIf { it.isNotBlank() } ?: return emptyMap()
+  fun authHeaders(url: String, token: String? = this.token()): Map<String, String> {
+    val t = token?.takeIf { it.isNotBlank() } ?: return emptyMap()
     return if (isOfficialHost(url.toHttpUrl())) mapOf("Authorization" to "Bearer $t") else emptyMap()
   }
 
@@ -168,6 +181,8 @@ class HfClient(
     // false | "auto" | "manual"
     val gated: JsonElement? = null,
   )
+
+  @Serializable private data class ApiRevision(val sha: String)
 
   @Serializable
   private data class ApiTreeEntry(

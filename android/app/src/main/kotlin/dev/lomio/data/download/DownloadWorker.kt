@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -19,6 +20,8 @@ import dev.lomio.LomioApp
 import dev.lomio.R
 import dev.lomio.data.db.ModelState
 import java.io.File
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -30,6 +33,7 @@ class DownloadScheduler(private val context: Context) {
       OneTimeWorkRequestBuilder<DownloadWorker>()
         .setInputData(workDataOf(DownloadWorker.KEY_MODEL_ID to modelId))
         .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
         .addTag(TAG)
         .build()
     WorkManager.getInstance(context)
@@ -60,25 +64,44 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
   override suspend fun doWork(): Result {
     val modelId = inputData.getString(KEY_MODEL_ID) ?: return Result.failure()
     val dao = container.db.models()
-    val model = dao.get(modelId) ?: return Result.failure()
+    var model = dao.get(modelId) ?: return Result.failure()
     val repo = model.hfRepo ?: return Result.failure()
     val path = model.hfFile ?: return Result.failure()
     val dest = File(model.filePath ?: container.models.hfDestination(repo, path).absolutePath)
     val hf = container.hfClient
-    val url = hf.downloadUrl(repo, path, model.hfRevision ?: "main")
 
-    runCatching { setForeground(foregroundInfo(model.displayName, 0, 0)) }
-    dao.updateProgress(modelId, ModelState.DOWNLOADING, model.bytesDone)
+    // Read the token ourselves: the process may have been started by WorkManager just now,
+    // before the app's async settings collector ran (gated models would 401 otherwise).
+    val token = container.settings.current().hfToken
 
-    var lastDbWrite = 0L
-    var lastPercent = -1
     return try {
+      // Pin the download to a commit so a resume can never mix two versions of the file.
+      if (model.hfRevision.isNullOrBlank() || model.hfRevision == "main") {
+        val sha = hf.commitSha(repo)
+        model = model.copy(hfRevision = sha)
+        dao.upsert(model)
+      }
+      val url = hf.downloadUrl(repo, path, model.hfRevision!!)
+
+      val partial = container.downloader.partFile(dest).length()
+      val remaining = (model.sizeBytes - partial).coerceAtLeast(0)
+      dest.parentFile?.mkdirs()
+      val free = dest.parentFile?.usableSpace ?: Long.MAX_VALUE
+      if (remaining + STORAGE_MARGIN_BYTES > free) {
+        throw InsufficientStorageException(remaining + STORAGE_MARGIN_BYTES, free)
+      }
+
+      runCatching { setForeground(foregroundInfo(model.displayName, partial, model.sizeBytes)) }
+      dao.updateProgress(modelId, ModelState.DOWNLOADING, partial)
+
+      var lastDbWrite = 0L
+      var lastPercent = -1
       container.downloader.download(
         url = url,
         dest = dest,
         expectedSize = model.sizeBytes.takeIf { it > 0 },
         expectedSha256 = model.sha256,
-        headers = hf.authHeaders(url),
+        headers = hf.authHeaders(url, token),
         progressIntervalMs = 500,
       ) { done, total ->
         val now = System.currentTimeMillis()
@@ -94,28 +117,52 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
       }
       val ready =
         container.models.withMetadata(
-          model.copy(
-            state = ModelState.READY,
-            bytesDone = dest.length(),
-            filePath = dest.absolutePath,
-            errorMessage = null,
-          ),
+          model.copy(state = ModelState.READY, bytesDone = dest.length(), filePath = dest.absolutePath, errorMessage = null),
           dest,
         )
       dao.upsert(ready)
       Result.success()
     } catch (e: CancellationException) {
-      withContext(NonCancellable) {
-        val partial = container.downloader.partFile(dest).length()
-        dao.get(modelId)?.let { dao.updateProgress(modelId, ModelState.PAUSED, partial) }
-      }
+      settle(modelId, dest, ModelState.PAUSED, null)
       throw e
-    } catch (e: Exception) {
-      val partial = container.downloader.partFile(dest).length()
-      dao.updateProgress(modelId, ModelState.ERROR, partial, e.message ?: e.javaClass.simpleName)
-      Result.failure()
+    } catch (e: Throwable) {
+      val transient =
+        e is IOException &&
+          e !is ChecksumMismatchException &&
+          e !is SizeMismatchException &&
+          e !is InsufficientStorageException &&
+          !(e is HttpStatusException && e.code in 400..499)
+      if (transient && runAttemptCount < MAX_WORK_ATTEMPTS) {
+        // Network dropped for longer than the downloader's own retries: let WorkManager
+        // back off and resume when connectivity returns.
+        settle(modelId, dest, ModelState.DOWNLOADING, "Waiting for network… (${e.message})")
+        Result.retry()
+      } else {
+        settle(modelId, dest, ModelState.ERROR, userMessage(e))
+        Result.failure()
+      }
     }
   }
+
+  /** Best-effort state write that never throws (the DB itself may be the problem, e.g. disk full). */
+  private suspend fun settle(modelId: String, dest: File, state: ModelState, message: String?) {
+    withContext(NonCancellable) {
+      runCatching {
+        val partial = container.downloader.partFile(dest).length()
+        container.db.models().updateProgress(modelId, state, partial, message)
+      }
+    }
+  }
+
+  private fun userMessage(e: Throwable): String =
+    when {
+      e is HttpStatusException && (e.code == 401 || e.code == 403) ->
+        "Access denied (HTTP ${e.code}). Gated model? Add a Hugging Face token in Settings."
+      e is HttpStatusException && e.code == 404 -> "File not found on Hugging Face (HTTP 404)."
+      e is InsufficientStorageException -> e.message!!
+      e is ChecksumMismatchException -> "Downloaded file is corrupt (checksum mismatch). Try again."
+      else -> e.message ?: e.javaClass.simpleName
+    }
 
   override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo("model", 0, 0)
 
@@ -151,6 +198,9 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
 
   companion object {
     const val KEY_MODEL_ID = "model_id"
+    private const val MAX_WORK_ATTEMPTS = 8
+    /** Keep this much free space beyond the file itself. */
+    const val STORAGE_MARGIN_BYTES = 300L * 1024 * 1024
     private const val CHANNEL = "downloads"
   }
 }

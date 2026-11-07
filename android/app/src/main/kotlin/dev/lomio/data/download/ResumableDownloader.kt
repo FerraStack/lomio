@@ -26,6 +26,13 @@ class HttpStatusException(val code: Int) : IOException("HTTP $code")
  * an HTTP `Range` request, verifies size + sha256 and atomically renames on success.
  *
  * Cancelling the calling coroutine leaves the `.part` file in place, so cancel = pause.
+ *
+ * Resume safety: the response ETag is kept next to the part file (`.part.etag`) and sent back
+ * as `If-Range`, so if the file changed upstream the server answers 200 and we start over
+ * instead of appending bytes of a different file. Callers should also pin the URL to a commit.
+ *
+ * Transient errors are retried [maxRetries] times; the counter resets whenever an attempt made
+ * progress, so a long download on a flaky network doesn't fail after a few drops.
  */
 class ResumableDownloader(
   private val http: OkHttpClient,
@@ -34,6 +41,8 @@ class ResumableDownloader(
   private val clock: () -> Long = System::currentTimeMillis,
 ) {
   fun partFile(dest: File) = File(dest.path + ".part")
+
+  private fun etagFile(dest: File) = File(dest.path + ".part.etag")
 
   /**
    * @param onProgress called at most every [progressIntervalMs] with (bytesDone, totalBytes);
@@ -53,8 +62,9 @@ class ResumableDownloader(
       val part = partFile(dest)
       var attempt = 0
       while (true) {
+        val before = if (part.exists()) part.length() else 0L
         try {
-          fetch(url, part, expectedSize, headers, progressIntervalMs, onProgress)
+          fetch(url, part, etagFile(dest), expectedSize, headers, progressIntervalMs, onProgress)
           break
         } catch (e: CancellationException) {
           throw e
@@ -63,6 +73,7 @@ class ResumableDownloader(
           if (e.code in 400..499 || ++attempt > maxRetries) throw e
           delay(retryDelayMs * attempt)
         } catch (e: IOException) {
+          if (part.exists() && part.length() > before) attempt = 0 // made progress: not stuck
           if (++attempt > maxRetries) throw e
           delay(retryDelayMs * attempt)
         }
@@ -70,19 +81,23 @@ class ResumableDownloader(
       verify(part, expectedSize, expectedSha256)
       if (dest.exists()) dest.delete()
       if (!part.renameTo(dest)) throw IOException("could not move ${part.name} into place")
+      etagFile(dest).delete()
       dest
     }
 
   private suspend fun fetch(
     url: String,
     part: File,
+    etagFile: File,
     expectedSize: Long?,
     headers: Map<String, String>,
     progressIntervalMs: Long,
     onProgress: suspend (Long, Long) -> Unit,
   ) {
     var offset = if (part.exists()) part.length() else 0L
-    if (expectedSize != null && offset > expectedSize) {
+    val etag = etagFile.takeIf { it.exists() }?.readText()?.trim()?.takeIf { it.isNotEmpty() }
+    if ((expectedSize != null && offset > expectedSize) || (offset > 0 && etag == null && expectedSize == null)) {
+      // Too big, or unknown provenance with nothing to validate against: start over.
       part.delete()
       offset = 0
     }
@@ -93,7 +108,10 @@ class ResumableDownloader(
         .url(url)
         .apply {
           headers.forEach { (k, v) -> header(k, v) }
-          if (offset > 0) header("Range", "bytes=$offset-")
+          if (offset > 0) {
+            header("Range", "bytes=$offset-")
+            if (etag != null) header("If-Range", etag)
+          }
         }
         .build()
 
@@ -109,7 +127,12 @@ class ResumableDownloader(
         !resp.isSuccessful -> throw HttpStatusException(resp.code)
       }
       val append = offset > 0 && resp.code == 206
-      if (!append) offset = 0 // server ignored Range (200): start from scratch
+      if (!append) offset = 0 // server ignored Range or the file changed (200): start over
+      // Remember the validator of what we're writing, for If-Range on the next resume.
+      val newEtag = resp.header("ETag")?.takeUnless { it.startsWith("W/") }
+      if (!append) {
+        if (newEtag != null) etagFile.writeText(newEtag) else etagFile.delete()
+      }
       val total =
         when {
           expectedSize != null -> expectedSize
@@ -177,3 +200,6 @@ class ResumableDownloader(
     }
   }
 }
+
+class InsufficientStorageException(needed: Long, free: Long) :
+  IOException("Not enough storage: needs ${needed / 1_000_000} MB, ${free / 1_000_000} MB free")
