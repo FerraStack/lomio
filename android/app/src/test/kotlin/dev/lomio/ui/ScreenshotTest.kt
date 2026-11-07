@@ -61,6 +61,13 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
+import dev.lomio.ui.search.SearchActions
+import dev.lomio.ui.search.SearchResult
+import dev.lomio.ui.search.SearchScreen
+import dev.lomio.ui.search.SearchUiState
 
 /**
  * Roborazzi screenshots of the main screens with fake state (no native library, no DB).
@@ -352,6 +359,113 @@ class ScreenshotTest {
   @Test
   fun chatPromptProgressDark() =
     shoot("chat_prompt_progress", dark = true) { ChatScreen(promptProgressChat, ChatActions()) }
+
+  /** A regenerated reply (2 versions) under an edited question (2 versions). */
+  private val versionsChat =
+    chat.copy(
+      title = "Name ideas for a bakery",
+      isGenerating = false,
+      messages =
+        listOf(
+          UiMessage("u1", MessageRole.USER, "Give me three names for a small bakery in Lviv.", versionIndex = 1, versionCount = 2),
+          UiMessage(
+            "a1",
+            MessageRole.ASSISTANT,
+            "1. **Lviv Crumb** — warm and local\n2. **Rynok Rye** — after the market square\n3. **Morning Kifli** — friendly and simple",
+            stats = GenerationStats(36, 0, 48, 380, 90.0, 17.9, StopReason.EOS),
+            versionIndex = 1,
+            versionCount = 2,
+          ),
+        ),
+    )
+
+  @Test fun chatVersionsLight() = shoot("chat_versions", dark = false) { ChatScreen(versionsChat, ChatActions()) }
+
+  @Test fun chatVersionsDark() = shoot("chat_versions", dark = true) { ChatScreen(versionsChat, ChatActions()) }
+
+  @OptIn(ExperimentalRoborazziApi::class)
+  private fun shootMessageMenu(dark: Boolean) {
+    compose.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) {
+        LomioTheme(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColor = false) {
+          ChatScreen(versionsChat, ChatActions())
+        }
+      }
+    }
+    compose.onNodeWithText("Give me three names for a small bakery in Lviv.").performTouchInput { longClick() }
+    compose.waitForIdle()
+    captureScreenRoboImage("build/outputs/roborazzi/chat_message_menu_${if (dark) "dark" else "light"}.png")
+  }
+
+  @Test fun chatMessageMenuLight() = shootMessageMenu(dark = false)
+
+  @Test fun chatMessageMenuDark() = shootMessageMenu(dark = true)
+
+  /** Edit from the long-press menu: the composer shows what is being edited. */
+  @Test
+  fun chatEditingLight() {
+    compose.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) {
+        LomioTheme(themeMode = ThemeMode.LIGHT, dynamicColor = false) { ChatScreen(versionsChat, ChatActions()) }
+      }
+    }
+    compose.onNodeWithText("Give me three names for a small bakery in Lviv.").performTouchInput { longClick() }
+    compose.onNodeWithText("Edit").performClick()
+    compose.waitForIdle()
+    compose.onRoot().captureRoboImage("build/outputs/roborazzi/chat_editing_light.png")
+  }
+
+  @OptIn(ExperimentalRoborazziApi::class)
+  private fun shootDeleteDialog(dark: Boolean) {
+    compose.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) {
+        LomioTheme(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColor = false) {
+          ChatScreen(versionsChat, ChatActions())
+        }
+      }
+    }
+    compose.onNodeWithContentDescription("More actions").performClick()
+    compose.onNodeWithText("Delete").performClick()
+    compose.waitForIdle()
+    captureScreenRoboImage("build/outputs/roborazzi/chat_delete_reply_${if (dark) "dark" else "light"}.png")
+  }
+
+  @Test fun chatDeleteReplyLight() = shootDeleteDialog(dark = false)
+
+  @Test fun chatDeleteReplyDark() = shootDeleteDialog(dark = true)
+
+  private val searchState =
+    SearchUiState(
+      query = "kyoto",
+      searched = true,
+      results =
+        listOf(
+          SearchResult("m1", "p", "Trip plan: Kyoto", MessageRole.USER, now, "Plan three days in \uE000Kyoto\uE001 in April with a day trip to Nara"),
+          SearchResult(
+            "m2",
+            "p",
+            "Trip plan: Kyoto",
+            MessageRole.ASSISTANT,
+            now - 60_000,
+            "…Day 1: Fushimi Inari early, then Gion. In \uE000Kyoto\uE001 the buses get crowded, so buy a…",
+          ),
+          SearchResult("m3", "c9", "Japanese rail passes", MessageRole.ASSISTANT, now - 86_400_000L * 9, "…Tokyo to \uE000Kyoto\uE001 on the Nozomi takes about 2 h 15 min…"),
+        ),
+    )
+
+  @Test fun searchResultsLight() = shoot("search_results", dark = false) { SearchScreen(searchState, SearchActions()) }
+
+  @Test fun searchResultsDark() = shoot("search_results", dark = true) { SearchScreen(searchState, SearchActions()) }
+
+  @Test
+  fun searchEmptyLight() =
+    shoot("search_empty", dark = false) { SearchScreen(SearchUiState(query = "risotto", searched = true), SearchActions()) }
+
+  @Test
+  fun drawerSearchLight() =
+    shoot("drawer_search", dark = false) {
+      DrawerContent(Destination.CHAT, "c1", "kyoto", history.take(1), DrawerActions())
+    }
 
   private val loadFailed =
     ChatUiState(

@@ -87,6 +87,8 @@ data class ConversationEntity(
   val pinned: Boolean = false,
   @ColumnInfo(name = "created_at") val createdAt: Long,
   @ColumnInfo(name = "updated_at") val updatedAt: Long,
+  /** Last message of the branch that is shown (messages form a tree via parent_id). */
+  @ColumnInfo(name = "leaf_id") val leafId: String? = null,
 )
 
 enum class MessageRole(val wire: String) {
@@ -99,7 +101,7 @@ enum class MessageStatus { COMPLETE, STREAMING, STOPPED, ERROR }
 
 @Entity(
   tableName = "message",
-  indices = [Index(value = ["conversation_id", "created_at"])],
+  indices = [Index(value = ["conversation_id", "created_at"]), Index("parent_id")],
   foreignKeys =
     [
       ForeignKey(

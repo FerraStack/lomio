@@ -91,24 +91,30 @@ class ChatService(
     }
   }
 
-  /** Re-runs the reply to the last user message (removes the last assistant reply). */
-  fun regenerate(conversationId: String, enableThinking: Boolean = true): Boolean =
+  /**
+   * A new version of an assistant reply: generates again from the same question and keeps the
+   * old reply as another version. With no [messageId], the last reply of the visible branch.
+   */
+  fun regenerate(conversationId: String, enableThinking: Boolean = true, messageId: String? = null): Boolean =
     launchTurn {
       val modelId = activeModelId() ?: return@launchTurn dispatch(GenEvent.Failed(null, "Load a model first"))
-      val last = chats.messages(conversationId).lastOrNull() ?: return@launchTurn
-      if (last.role == MessageRole.ASSISTANT) chats.truncateFrom(conversationId, last.id)
-      generate(conversationId, modelId, enableThinking)
+      val branch = chats.messages(conversationId)
+      val target = messageId?.let { id -> branch.firstOrNull { it.id == id } } ?: branch.lastOrNull() ?: return@launchTurn
+      // Reply to the question above the target (or to the target itself if it is a question).
+      val anchor = if (target.role == MessageRole.ASSISTANT) target.parentId else target.id
+      generate(conversationId, modelId, enableThinking, anchor ?: return@launchTurn)
     }
 
-  /** Edit-and-resend: replaces a user message and drops everything after it. */
+  /** Edit: adds the new text as another version of the question and answers it. */
   fun edit(conversationId: String, messageId: String, newText: String, enableThinking: Boolean = true): Boolean {
     if (newText.isBlank()) return false
     return launchTurn {
-      // Check the model before touching history: without one, the edit would only delete.
+      // Check the model before touching history: without one, the edit would be left unanswered.
       val modelId = activeModelId() ?: return@launchTurn dispatch(GenEvent.Failed(null, "Load a model first"))
-      chats.truncateFrom(conversationId, messageId)
-      chats.addMessage(conversationId, MessageRole.USER, newText.trim())
-      generate(conversationId, modelId, enableThinking)
+      val original = chats.message(messageId) ?: return@launchTurn
+      val edited =
+        chats.addMessage(conversationId, MessageRole.USER, newText.trim(), parent = ChatRepository.Parent.Of(original.parentId))
+      generate(conversationId, modelId, enableThinking, edited.id)
     }
   }
 
@@ -116,7 +122,13 @@ class ChatService(
     engine.stop()
   }
 
-  private suspend fun generate(conversationId: String, modelId: String, enableThinking: Boolean) {
+  /** Generates a reply under [parentId] (default: the end of the visible branch). */
+  private suspend fun generate(
+    conversationId: String,
+    modelId: String,
+    enableThinking: Boolean,
+    parentId: String? = null,
+  ) {
     val conversation = chats.conversation(conversationId) ?: return
     val app = settings.current()
     val modelSettings = models.settings(modelId)
@@ -131,8 +143,7 @@ class ChatService(
 
     val fullHistory = buildList {
       if (systemPrompt.isNotBlank()) add(ChatMessage("system", systemPrompt))
-      chats
-        .messages(conversationId)
+      (if (parentId != null) chats.pathTo(conversationId, parentId) else chats.messages(conversationId))
         .filter { it.role != MessageRole.SYSTEM && it.content.isNotEmpty() && it.status != MessageStatus.ERROR }
         .forEach { add(ChatMessage(it.role.wire, it.content, it.reasoning)) }
     }
@@ -141,7 +152,14 @@ class ChatService(
     val history = ContextWindow.trim(fullHistory, nCtx, sampling.maxTokens)
 
     val assistant =
-      chats.addMessage(conversationId, MessageRole.ASSISTANT, "", MessageStatus.STREAMING, modelId)
+      chats.addMessage(
+        conversationId,
+        MessageRole.ASSISTANT,
+        "",
+        MessageStatus.STREAMING,
+        modelId,
+        parent = if (parentId != null) ChatRepository.Parent.Of(parentId) else ChatRepository.Parent.Leaf,
+      )
     dispatch(GenEvent.Started(conversationId, assistant.id, assistant.createdAt))
 
     var content = ""
