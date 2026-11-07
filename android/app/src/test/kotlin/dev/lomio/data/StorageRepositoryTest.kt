@@ -93,4 +93,17 @@ class StorageRepositoryTest {
     assertTrue(cache.list()!!.isEmpty())
     assertEquals(0L, repo.scan(emptyList()).cacheBytes)
   }
+
+  @Test
+  fun aVisionProjectorBelongsToItsModel() = runTest {
+    val weights = file(models, "hf_ggml-org_SmolVLM/SmolVLM-Q8_0.gguf", 1_000)
+    val projector = file(models, "hf_ggml-org_SmolVLM/mmproj-SmolVLM-Q8_0.gguf", 300)
+    val rows = listOf(model("v", weights.path).copy(mmprojFile = projector.name, mmprojPath = projector.path))
+
+    val scan = repo.scan(rows)
+    assertEquals(mapOf("v" to 1_300L), scan.modelBytes)
+    assertTrue("projector is not a leftover", scan.leftovers.isEmpty())
+    assertEquals(0L, repo.deleteLeftovers(rows))
+    assertTrue(projector.exists())
+  }
 }
