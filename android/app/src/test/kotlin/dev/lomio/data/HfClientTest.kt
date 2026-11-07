@@ -52,6 +52,7 @@ class HfClientTest {
 
   @Test
   fun filesKeepsOnlyGgufWithLfsHashes() = runTest {
+    server.enqueue(MockResponse.Builder().body("""{"id":"unsloth/Qwen3-1.7B-GGUF","sha":"abc123"}""").build())
     server.enqueue(
       MockResponse.Builder()
         .body(
@@ -63,7 +64,10 @@ class HfClientTest {
         .build()
     )
     val files = client().ggufFiles("unsloth/Qwen3-1.7B-GGUF")
-    assertEquals("/api/models/unsloth/Qwen3-1.7B-GGUF/tree/main", server.takeRequest().url.encodedPath)
+    assertEquals("/api/models/unsloth/Qwen3-1.7B-GGUF/revision/main", server.takeRequest().url.encodedPath)
+    // Listed at the resolved commit, and every file is pinned to it for download.
+    assertEquals("/api/models/unsloth/Qwen3-1.7B-GGUF/tree/abc123", server.takeRequest().url.encodedPath)
+    assertTrue(files.all { it.revision == "abc123" })
     assertEquals(listOf("Qwen3-1.7B-Q4_K_M.gguf", "Qwen3-1.7B-Q8_0.gguf"), files.map { it.path })
     assertEquals(1000, files[0].sizeBytes)
     assertEquals("def", files[0].sha256)
@@ -78,6 +82,21 @@ class HfClientTest {
     assertTrue(c.authHeaders("http://huggingface.co/x").isEmpty())
     assertTrue(HfClient.isOfficialHost("https://cdn.huggingface.co/x".toHttpUrl()))
     assertFalse(HfClient.isOfficialHost("https://huggingface.co.evil.com/x".toHttpUrl()))
+  }
+
+  @Test
+  fun listingStillWorksIfRevisionLookupFails() = runTest {
+    server.enqueue(MockResponse.Builder().code(500).build())
+    server.enqueue(MockResponse.Builder().body("""[{"type":"file","path":"a.gguf","size":5}]""").build())
+    val files = client().ggufFiles("o/r")
+    assertEquals(1, files.size)
+    assertNull(files[0].revision)
+  }
+
+  @Test
+  fun explicitTokenOverridesProvider() {
+    val c = HfClient(OkHttpClient(), token = { null })
+    assertEquals(mapOf("Authorization" to "Bearer t"), c.authHeaders("https://huggingface.co/x", "t"))
   }
 
   @Test

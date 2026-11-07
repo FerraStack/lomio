@@ -11,6 +11,7 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
+import mockwebserver3.SocketEffect
 import okhttp3.OkHttpClient
 import okio.Buffer
 import org.junit.After
@@ -33,25 +34,40 @@ class ResumableDownloaderTest {
   private val downloader = ResumableDownloader(OkHttpClient(), maxRetries = 2, retryDelayMs = 1)
   private val ranges = mutableListOf<String?>()
 
-  /** Serves [payload] honoring `Range: bytes=N-`, optionally failing the first [failFirst] requests. */
-  private fun rangeServer(failFirst: Int = 0, ignoreRange: Boolean = false) {
+  private val ifRanges = mutableListOf<String?>()
+
+  /**
+   * Serves [payload] honoring `Range: bytes=N-` and `If-Range` (ETag [etag]). The first
+   * [failFirst] requests get a 503; the first [dropFirst] responses are cut off halfway.
+   */
+  private fun rangeServer(failFirst: Int = 0, ignoreRange: Boolean = false, dropFirst: Int = 0, etag: String = "\"v1\"") {
     val count = AtomicInteger()
+    val drops = AtomicInteger()
     server.dispatcher =
       object : Dispatcher() {
         override fun dispatch(request: RecordedRequest): MockResponse {
           val range = request.headers["Range"]
-          synchronized(ranges) { ranges += range }
+          synchronized(ranges) {
+            ranges += range
+            ifRanges += request.headers["If-Range"]
+          }
           if (count.getAndIncrement() < failFirst) return MockResponse.Builder().code(503).build()
+          val ifRange = request.headers["If-Range"]
           val start = range?.removePrefix("bytes=")?.removeSuffix("-")?.toInt()
-          return if (start == null || ignoreRange) {
-            MockResponse.Builder().code(200).body(Buffer().write(payload)).build()
+          val drop = drops.getAndIncrement() < dropFirst
+          fun MockResponse.Builder.maybeDrop() =
+            apply { if (drop) onResponseBody(SocketEffect.CloseSocket()) }
+          return if (start == null || ignoreRange || (ifRange != null && ifRange != etag)) {
+            MockResponse.Builder().code(200).addHeader("ETag", etag).body(Buffer().write(payload)).maybeDrop().build()
           } else if (start >= payload.size) {
             MockResponse.Builder().code(416).build()
           } else {
             MockResponse.Builder()
               .code(206)
+              .addHeader("ETag", etag)
               .addHeader("Content-Range", "bytes $start-${payload.size - 1}/${payload.size}")
               .body(Buffer().write(payload, start, payload.size - start))
+              .maybeDrop()
               .build()
           }
         }
@@ -113,6 +129,36 @@ class ResumableDownloaderTest {
     val f = downloader.download(server.url("/m.gguf").toString(), dest(), payload.size.toLong(), sha)
     assertArrayEquals(payload, f.readBytes())
     assertEquals(3, ranges.size)
+  }
+
+  @Test
+  fun flakyConnectionResumesAndRetryBudgetResetsOnProgress() = runTest {
+    // Four mid-body disconnects with maxRetries = 2: only works because each attempt made progress.
+    rangeServer(dropFirst = 4)
+    val f = downloader.download(server.url("/m.gguf").toString(), dest(), payload.size.toLong(), sha)
+    assertArrayEquals(payload, f.readBytes())
+    assertEquals(5, ranges.size)
+    assertTrue(ranges.drop(1).all { it != null && it.startsWith("bytes=") })
+  }
+
+  @Test
+  fun resumeSendsIfRangeWithTheStoredEtag() = runTest {
+    rangeServer(dropFirst = 1)
+    downloader.download(server.url("/m.gguf").toString(), dest(), payload.size.toLong(), sha)
+    assertEquals(listOf(null, "\"v1\""), ifRanges)
+    assertFalse(File(dest().path + ".part.etag").exists())
+  }
+
+  @Test
+  fun changedUpstreamFileRestartsInsteadOfAppending() = runTest {
+    // A part file from an older version (ETag v0) must not be appended to.
+    val part = downloader.partFile(dest()).apply { parentFile!!.mkdirs() }
+    part.writeBytes(ByteArray(100_000) { 7 })
+    File(dest().path + ".part.etag").writeText("\"v0\"")
+    rangeServer(etag = "\"v1\"")
+    val f = downloader.download(server.url("/m.gguf").toString(), dest(), payload.size.toLong(), sha)
+    assertArrayEquals(payload, f.readBytes())
+    assertEquals(listOf<String?>("\"v0\""), ifRanges)
   }
 
   @Test

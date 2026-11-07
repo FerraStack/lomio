@@ -24,8 +24,33 @@ class MemoryFitTest {
   }
 
   @Test
-  fun missingShapeMeansNoKvEstimate() {
-    assertEquals(0, MemoryFit.kvCacheBytes(ModelShape(gib, null, null, null, null), 4096))
+  fun missingShapeFallsBackToThirtyPercentOfWeights() {
+    // Unknown metadata must not look free: assume ~1.3x the file size in total.
+    val shape = ModelShape(gib, null, null, null, null)
+    assertNull(MemoryFit.kvCacheBytesOrNull(shape, 4096))
+    assertEquals((gib * 0.3).toLong(), MemoryFit.kvCacheBytes(shape, 4096))
+    val e = MemoryFit.estimate(shape, 4096)
+    assertTrue(e.totalBytes > gib * 1.3)
+  }
+
+  @Test
+  fun overBudgetIsWontFitEvenIfRawAvailableIsEnough() {
+    val e = MemoryFit.estimate(llama3b, 4096) // ~2.8 GiB
+    // 3.2 GiB available, but 30% of 4 GiB must stay free -> budget 2.8 GiB... just over.
+    assertEquals(Fit.WONT_FIT, MemoryFit.verdict(e.copy(overheadBytes = e.overheadBytes + gib / 10), 3200L * 1024 * 1024, 4 * gib))
+  }
+
+  @Test
+  fun reclaimableCountsTheModelBeingReplaced() {
+    assertEquals(0, MemoryFit.reclaimable(null, 4096))
+    val small = ModelShape(gib, 16, 2048, 16, 8)
+    val r = MemoryFit.reclaimable(small, 4096)
+    assertEquals(MemoryFit.estimate(small, 4096).totalBytes, r)
+    // A model that doesn't fit alone fits once the loaded one is unloaded first.
+    val e = MemoryFit.estimate(llama3b, 4096)
+    val avail = 2 * gib
+    assertEquals(Fit.WONT_FIT, MemoryFit.verdict(e, avail, 12 * gib))
+    assertEquals(Fit.FITS, MemoryFit.verdict(e, avail + r + gib, 12 * gib))
   }
 
   @Test
