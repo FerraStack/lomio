@@ -2,6 +2,7 @@ package dev.lomio
 
 import android.os.ParcelFileDescriptor
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
@@ -83,7 +84,8 @@ class EndToEndChatTest {
     screenshot("e2e_1_loading")
     compose.waitUntil(120_000) { c.modelManager.activeModelId.value != null }
 
-    compose.onNode(hasSetTextAction()).performTextInput("Once upon a time")
+    // The drawer (composed even when closed) has a search field too; pick the composer.
+    compose.onNode(hasSetTextAction() and hasText("Message")).performTextInput("Once upon a time")
     compose.onNodeWithContentDescription("Send").performClick()
 
     compose.waitUntil(60_000) { c.chatService.state.value.streaming?.content?.isNotEmpty() == true || hasStats() }
