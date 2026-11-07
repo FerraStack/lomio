@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs inside reactivecircus/android-emulator-runner. Installs the debug + test APKs, takes a
-# launch screenshot, runs the end-to-end tests with a tiny GGUF (UI chat flow, KV-cache reuse
-# after a stop during prompt processing) and fails on any crash in logcat. Outputs land in ./e2e-out (uploaded as an artifact by CI).
+# launch screenshot, runs every instrumentation test with a tiny GGUF and fails on any crash in
+# logcat. Outputs land in ./e2e-out (uploaded as an artifact by CI).
 set -euo pipefail
 
 APK=apk/app-debug.apk
@@ -25,8 +25,9 @@ adb shell am force-stop dev.lomio
 adb push "$MODEL" /data/local/tmp/e2e-model.gguf
 adb shell chmod 644 /data/local/tmp/e2e-model.gguf
 set +e
+# Every instrumentation test in the test APK: the UI chat flow, a 20-round streaming stress test
+# and engine-level checks.
 adb shell am instrument -w -r \
-  -e class dev.lomio.EndToEndChatTest,dev.lomio.KvCacheReuseTest \
   dev.lomio.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/instrumentation.txt"
 set -e
 
@@ -45,7 +46,7 @@ if grep -A3 "FATAL EXCEPTION" "$OUT/logcat-full.txt" | grep -q "Process: dev.lom
   grep -nE -A20 "FATAL EXCEPTION|Fatal signal [0-9]+" "$OUT/logcat-full.txt" | head -80
   status=1
 fi
-if ! grep -q "OK (2 tests)" "$OUT/instrumentation.txt"; then
+if ! grep -qE "^OK \([0-9]+ tests?\)" "$OUT/instrumentation.txt"; then
   echo "::error::end-to-end instrumentation test failed"
   status=1
 fi

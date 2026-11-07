@@ -1,5 +1,7 @@
 package dev.lomio.ui.chat
 
+import dev.lomio.ui.assertMainThread
+
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -150,7 +152,10 @@ fun HighlightedCode(code: String, language: String?, style: TextStyle, palette: 
           .conflate()
           .collect { c ->
             if (highlighted?.text == c) return@collect
-            highlighted = withContext(Dispatchers.Default) { highlight(c, language, palette) }
+            val result = withContext(Dispatchers.Default) { highlight(c, language, palette) }
+            // Only the pure highlight runs off main; the Compose state write is back on Main.
+            assertMainThread("Code highlight state")
+            highlighted = result
             delay(HighlightIntervalMs)
           }
       }

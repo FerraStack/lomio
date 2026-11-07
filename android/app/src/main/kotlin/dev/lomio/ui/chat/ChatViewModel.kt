@@ -1,5 +1,7 @@
 package dev.lomio.ui.chat
 
+import dev.lomio.ui.assertMainThread
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.lomio.AppContainer
@@ -45,6 +47,7 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
         c.settings.settings,
         local,
       ) { (id, conv, msgs), gen, bits, settings, (think, err, loadErr, dismissed) ->
+        assertMainThread("Chat UI state")
         val ready = bits.models.filter { it.state == ModelState.READY }
         val active = ready.firstOrNull { it.id == bits.activeId }
         val status =
