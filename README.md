@@ -29,7 +29,8 @@ stats line. arm64 phones are not tested yet:
   - Chat templates come from the GGUF via llama.cpp's own `common_chat`.
   - The KV cache is reused when the prompt starts the same as the last one.
   - Long chats keep their newest turns to fit the context.
-  - Stop takes effect promptly, including during prompt processing.
+  - Stop takes effect promptly, including during prompt processing, and keeps the part of the
+    prompt that was already processed. Long prompts show a progress bar.
 - Settings and a local benchmark (pp/tg tokens per second).
 
 Not done yet: per-model settings screen, chat export/import, the HF token in Keystore storage,
@@ -112,6 +113,8 @@ ccache.
    - runs `EndToEndChatTest` with llama2.c stories15M (21 MB, cached): import the GGUF, load
      it from the model sheet, send a message, wait for streamed tokens and the `tok/s` line,
      taking screenshots along the way
+   - runs `KvCacheReuseTest` on the same model: stop during prompt processing, then check that
+     the next identical prompt reuses the tokens decoded before the stop
    - fails on any crash of `dev.lomio` in logcat
 3. **`screenshots-comment`** (pull requests): pushes the PNGs to the orphan `ci-screenshots`
    branch and creates or updates a single PR comment with a light/dark table.

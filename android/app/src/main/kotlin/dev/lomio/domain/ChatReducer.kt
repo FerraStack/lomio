@@ -13,6 +13,8 @@ data class UiMessage(
   val status: MessageStatus = MessageStatus.COMPLETE,
   val stats: GenerationStats? = null,
   val createdAt: Long = 0,
+  /** While the prompt is being processed: 0..1. Null otherwise. */
+  val promptProgress: Float? = null,
 )
 
 /** State of the (at most one) running generation. */
@@ -33,6 +35,8 @@ sealed interface GenEvent {
     GenEvent
 
   data class Update(val assistantId: String, val content: String, val reasoning: String) : GenEvent
+
+  data class PromptProgress(val assistantId: String, val done: Int, val total: Int) : GenEvent
 
   data class Finished(
     val assistantId: String,
@@ -78,9 +82,17 @@ object ChatReducer {
       is GenEvent.Update ->
         state.streaming?.takeIf { it.id == event.assistantId }?.let {
           state.copy(
-            streaming = it.copy(content = event.content, reasoning = event.reasoning.ifEmpty { null })
+            streaming =
+              it.copy(content = event.content, reasoning = event.reasoning.ifEmpty { null }, promptProgress = null)
           )
         } ?: state
+      is GenEvent.PromptProgress ->
+        state.streaming
+          ?.takeIf { it.id == event.assistantId && it.content.isEmpty() && it.reasoning == null }
+          ?.let {
+            val p = if (event.total <= 0) 1f else (event.done.toFloat() / event.total).coerceIn(0f, 1f)
+            state.copy(streaming = it.copy(promptProgress = p))
+          } ?: state
       is GenEvent.Finished -> {
         val streaming = state.streaming?.takeIf { it.id == event.assistantId } ?: return state
         val status = statusFor(event.stats.stopReason)
@@ -92,6 +104,7 @@ object ChatReducer {
               reasoning = event.reasoning.ifEmpty { null },
               status = status,
               stats = event.stats,
+              promptProgress = null,
             ),
         )
       }
@@ -101,7 +114,7 @@ object ChatReducer {
         } else {
           state.copy(
             streaming = null,
-            lastFinished = state.streaming?.copy(status = MessageStatus.ERROR) ?: state.lastFinished,
+            lastFinished = state.streaming?.copy(status = MessageStatus.ERROR, promptProgress = null) ?: state.lastFinished,
             error = event.message,
           )
         }

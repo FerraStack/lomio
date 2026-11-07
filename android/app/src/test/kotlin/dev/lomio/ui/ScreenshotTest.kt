@@ -327,6 +327,31 @@ class ScreenshotTest {
   @Test fun chatTableScrolledLight() = shootTableScrolled(dark = false)
 
   @Test fun chatTableScrolledDark() = shootTableScrolled(dark = true)
+  /** A long pasted prompt being processed before the first token (issue #3 adds the progress). */
+  private val promptProgressChat =
+    chat.copy(
+      title = "Summarise these notes",
+      messages =
+        listOf(
+          UiMessage(
+            "u1",
+            MessageRole.USER,
+            "Summarise these meeting notes in five bullet points:\n\n" +
+              "We reviewed the Q3 roadmap. Downloads move to a foreground job on Android 14, the " +
+              "Hugging Face token goes to the Keystore, and tablets get a two-pane layout. " +
+              "Vision models are next once the projector loading is stable…",
+          ),
+          UiMessage("a1", MessageRole.ASSISTANT, "", status = MessageStatus.STREAMING, promptProgress = 0.42f),
+        ),
+    )
+
+  @Test
+  fun chatPromptProgressLight() =
+    shoot("chat_prompt_progress", dark = false) { ChatScreen(promptProgressChat, ChatActions()) }
+
+  @Test
+  fun chatPromptProgressDark() =
+    shoot("chat_prompt_progress", dark = true) { ChatScreen(promptProgressChat, ChatActions()) }
 
   private val loadFailed =
     ChatUiState(

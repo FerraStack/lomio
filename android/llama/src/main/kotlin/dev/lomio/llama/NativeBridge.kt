@@ -11,6 +11,8 @@ internal object NativeBridge {
   /** Implemented by Kotlin, invoked from native code during [nativeChat]. */
   interface UpdateCallback {
     fun onUpdate(content: ByteArray, reasoning: ByteArray)
+
+    fun onPromptProgress(done: Int, total: Int)
   }
 
   @Volatile private var libraryLoaded = false
