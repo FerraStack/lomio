@@ -41,13 +41,26 @@ class AndroidMemoryProvider(private val context: Context) : DeviceMemoryProvider
 sealed interface LoadOutcome {
   data class Loaded(val info: ModelInfo) : LoadOutcome
 
-  /** Refused by the memory check; retry with `force = true` to load anyway. */
-  data class WontFit(val estimate: MemoryEstimate, val memory: DeviceMemory) : LoadOutcome
+  /** TIGHT or WONT_FIT: the user must confirm ([ModelManager.pendingConfirmation]). */
+  data class NeedsConfirmation(val pending: PendingLoad) : LoadOutcome
 
   data class Failed(val message: String) : LoadOutcome
 }
 
-/** Owns which model is loaded; adds the memory check and crash-loop guard around the engine. */
+data class PendingLoad(
+  val modelId: String,
+  val modelName: String,
+  val fit: Fit,
+  val estimate: MemoryEstimate,
+  val memory: DeviceMemory,
+)
+
+/**
+ * Owns which model is loaded; adds the memory check and the crash-loop guard around the engine.
+ *
+ * The guard marker is cleared when `engine.load` returns, which happens only after llama.cpp's
+ * warm-up decode succeeded (see nativeLoad), i.e. after the first successful decode.
+ */
 class ModelManager(
   private val engine: InferenceEngine,
   private val models: ModelRepository,
@@ -58,6 +71,9 @@ class ModelManager(
   private val mutex = Mutex()
   private val _activeModelId = MutableStateFlow<String?>(null)
   private val _crashedModelId = MutableStateFlow<String?>(null)
+  private val _pending = MutableStateFlow<PendingLoad?>(null)
+  private var activeLoad: LoadSettings? = null
+  private var autoLoadDone = false
 
   val engineState: StateFlow<EngineState> = engine.state
   val activeModelId: StateFlow<String?> = _activeModelId.asStateFlow()
@@ -65,19 +81,30 @@ class ModelManager(
   /** Set when the previous process died while loading this model. */
   val crashedModelId: StateFlow<String?> = _crashedModelId.asStateFlow()
 
+  /** A load waiting for the user to accept a memory warning. */
+  val pendingConfirmation: StateFlow<PendingLoad?> = _pending.asStateFlow()
+
   suspend fun loadSettingsFor(modelId: String): LoadSettings {
     val global = settings.current().load
     val perModel = SettingsJson.decodeLoad(models.settings(modelId)?.loadJson)
     return SettingsResolver.load(global, perModel)
   }
 
-  suspend fun fit(model: ModelEntity, nCtx: Int? = null): Pair<Fit, MemoryEstimate> {
+  /**
+   * Memory verdict for loading [model]. Memory held by the currently loaded model counts as
+   * available, because it is unloaded first.
+   */
+  suspend fun fit(model: ModelEntity, nCtx: Int? = null): Triple<Fit, MemoryEstimate, DeviceMemory> {
     val ctx = nCtx ?: loadSettingsFor(model.id).toLoadParams().nCtx
     val estimate = MemoryFit.estimate(ModelRepository.shapeOf(model), ctx)
-    val mem = memory.current()
-    return MemoryFit.verdict(estimate, mem.availableBytes, mem.totalBytes) to estimate
+    val raw = memory.current()
+    val loaded = _activeModelId.value?.let { models.get(it) }
+    val reclaim = MemoryFit.reclaimable(loaded?.let(ModelRepository::shapeOf), activeLoad?.toLoadParams()?.nCtx ?: ctx)
+    val mem = raw.copy(availableBytes = raw.availableBytes + reclaim)
+    return Triple(MemoryFit.verdict(estimate, mem.availableBytes, mem.totalBytes), estimate, mem)
   }
 
+  /** @param force skip the memory confirmation (the user already accepted it). */
   suspend fun load(modelId: String, force: Boolean = false): LoadOutcome =
     mutex.withLock {
       val model = models.get(modelId) ?: return LoadOutcome.Failed("Model not found")
@@ -85,14 +112,20 @@ class ModelManager(
       if (model.state != ModelState.READY || path == null || !File(path).exists()) {
         return LoadOutcome.Failed("${model.displayName} is not downloaded")
       }
-      val params = loadSettingsFor(modelId).toLoadParams()
-      val (fit, estimate) = fit(model, params.nCtx)
-      if (fit == Fit.WONT_FIT && !force) return LoadOutcome.WontFit(estimate, memory.current())
+      val load = loadSettingsFor(modelId)
+      val (fit, estimate, mem) = fit(model, load.toLoadParams().nCtx)
+      if (fit != Fit.FITS && !force) {
+        val pending = PendingLoad(modelId, model.displayName, fit, estimate, mem)
+        _pending.value = pending
+        return LoadOutcome.NeedsConfirmation(pending)
+      }
+      _pending.value = null
 
       crashGuard.beginLoad(modelId)
       try {
-        val info = engine.load(path, params)
+        val info = engine.load(path, load.toLoadParams())
         _activeModelId.value = modelId
+        activeLoad = load
         _crashedModelId.value = null
         models.touch(modelId)
         settings.update { it.copy(lastModelId = modelId) }
@@ -102,28 +135,44 @@ class ModelManager(
       } catch (e: Throwable) {
         // Includes UnsatisfiedLinkError if the native library is missing for this ABI.
         _activeModelId.value = null
+        activeLoad = null
         LoadOutcome.Failed(e.message ?: "Failed to load model")
       } finally {
+        // Reached only if the process survived the load including its warm-up decode.
         crashGuard.endLoad()
       }
     }
+
+  suspend fun confirmPending(): LoadOutcome? {
+    val p = _pending.value ?: return null
+    _pending.value = null
+    return load(p.modelId, force = true)
+  }
+
+  fun dismissPending() {
+    _pending.value = null
+  }
 
   suspend fun unload() =
     mutex.withLock {
       engine.unload()
       _activeModelId.value = null
+      activeLoad = null
     }
 
+  /** Process start (any reason, including WorkManager): only reads the crash marker. */
+  fun onProcessStart() {
+    crashGuard.consumeCrashedLoad()?.let { _crashedModelId.value = it }
+  }
+
   /**
-   * Called once per process start. Never auto-loads a model whose last load crashed
-   * (RESEARCH.md §7, product decision 2).
+   * First time the UI comes to the foreground in this process: auto-load the last model unless
+   * its last load crashed (RESEARCH.md §7, product decision 2). Never runs for background starts.
    */
-  suspend fun onAppStart() {
-    val crashed = crashGuard.consumeCrashedLoad()
-    if (crashed != null) {
-      _crashedModelId.value = crashed
-      return
-    }
+  suspend fun onFirstForeground() {
+    if (autoLoadDone) return
+    autoLoadDone = true
+    if (_crashedModelId.value != null) return
     val s = settings.current()
     val last = s.lastModelId ?: return
     if (s.autoLoadLastModel && models.get(last)?.state == ModelState.READY) load(last)

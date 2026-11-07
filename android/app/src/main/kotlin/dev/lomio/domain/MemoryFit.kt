@@ -33,17 +33,27 @@ object MemoryFit {
   /** Fraction of total RAM we never plan to use (LMK headroom; PocketPal uses 25–35%). */
   const val TOTAL_RAM_HEADROOM = 0.30
 
-  fun kvCacheBytes(shape: ModelShape, nCtx: Int): Long {
-    val layers = shape.nLayers ?: return 0
-    val nHead = shape.nHead ?: return 0
-    val nEmbd = shape.nEmbd ?: return 0
-    if (nHead == 0) return 0
+  /**
+   * Fallback when the GGUF header lacks the attention shape: assume KV + buffers cost 30% of the
+   * weights (i.e. ~1.3× file size in total) rather than pretending they are free.
+   */
+  const val UNKNOWN_SHAPE_KV_FRACTION = 0.30
+
+  /** KV cache size, or null when the header doesn't describe the attention layout. */
+  fun kvCacheBytesOrNull(shape: ModelShape, nCtx: Int): Long? {
+    val layers = shape.nLayers ?: return null
+    val nHead = shape.nHead ?: return null
+    val nEmbd = shape.nEmbd ?: return null
+    if (nHead == 0 || layers == 0) return null
     val nHeadKv = shape.nHeadKv ?: nHead
     val headDim = nEmbd / nHead
     val k = shape.keyLength ?: headDim
     val v = shape.valueLength ?: headDim
     return layers.toLong() * nCtx * nHeadKv * (k + v) * KV_BYTES_PER_ELEMENT
   }
+
+  fun kvCacheBytes(shape: ModelShape, nCtx: Int): Long =
+    kvCacheBytesOrNull(shape, nCtx) ?: (shape.fileSizeBytes * UNKNOWN_SHAPE_KV_FRACTION).toLong()
 
   fun estimate(shape: ModelShape, nCtx: Int): MemoryEstimate {
     val weights = shape.fileSizeBytes
@@ -53,7 +63,13 @@ object MemoryFit {
   }
 
   /**
-   * @param availableBytes `ActivityManager.MemoryInfo.availMem`
+   * Budget = available RAM, capped so that [TOTAL_RAM_HEADROOM] of total RAM always stays free
+   * for the system. FITS leaves a further 15% margin inside the budget; TIGHT uses the margin;
+   * anything over the budget is WONT_FIT. Callers must ask the user before loading TIGHT or
+   * WONT_FIT models.
+   *
+   * @param availableBytes `ActivityManager.MemoryInfo.availMem`, plus the footprint of a model
+   *   that will be unloaded first (see [reclaimable]).
    * @param totalBytes `ActivityManager.MemoryInfo.totalMem`
    */
   fun verdict(estimate: MemoryEstimate, availableBytes: Long, totalBytes: Long): Fit {
@@ -61,10 +77,14 @@ object MemoryFit {
     val budget = minOf(availableBytes.toDouble(), totalBytes * (1 - TOTAL_RAM_HEADROOM))
     return when {
       need <= budget * 0.85 -> Fit.FITS
-      need <= availableBytes -> Fit.TIGHT
+      need <= budget -> Fit.TIGHT
       else -> Fit.WONT_FIT
     }
   }
+
+  /** Memory that becomes available when the currently loaded model is unloaded first. */
+  fun reclaimable(loaded: ModelShape?, loadedCtx: Int): Long =
+    loaded?.let { estimate(it, loadedCtx).totalBytes } ?: 0
 
   /** Largest context (multiple of 256, ≥ 512) that still [Fit.FITS], or null if none does. */
   fun maxFittingContext(shape: ModelShape, availableBytes: Long, totalBytes: Long, limit: Int): Int? {

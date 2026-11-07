@@ -32,17 +32,34 @@ sealed interface GenEvent {
   data class Started(val conversationId: String, val assistantId: String, val createdAt: Long) :
     GenEvent
 
-  data class Update(val content: String, val reasoning: String) : GenEvent
+  data class Update(val assistantId: String, val content: String, val reasoning: String) : GenEvent
 
-  data class Finished(val content: String, val reasoning: String, val stats: GenerationStats) :
-    GenEvent
+  data class Finished(
+    val assistantId: String,
+    val content: String,
+    val reasoning: String,
+    val stats: GenerationStats,
+  ) : GenEvent
 
-  data class Failed(val message: String) : GenEvent
+  /** [assistantId] is null when generation failed before an assistant message existed. */
+  data class Failed(val assistantId: String?, val message: String) : GenEvent
 
   data object ErrorShown : GenEvent
 }
 
-/** Pure state machine for streaming generation; ChatService only feeds it events. */
+/** How a finished generation is stored. */
+fun statusFor(reason: StopReason): MessageStatus =
+  when (reason) {
+    StopReason.CANCELLED -> MessageStatus.STOPPED
+    StopReason.ERROR -> MessageStatus.ERROR
+    else -> MessageStatus.COMPLETE
+  }
+
+/**
+ * Pure state machine for streaming generation; ChatService only feeds it events. Events for an
+ * assistant message other than the one currently streaming are ignored, so a stray second
+ * generation can never mix its tokens into the current reply.
+ */
 object ChatReducer {
   fun reduce(state: GenerationState, event: GenEvent): GenerationState =
     when (event) {
@@ -59,16 +76,14 @@ object ChatReducer {
             ),
         )
       is GenEvent.Update ->
-        state.streaming?.let {
+        state.streaming?.takeIf { it.id == event.assistantId }?.let {
           state.copy(
             streaming = it.copy(content = event.content, reasoning = event.reasoning.ifEmpty { null })
           )
         } ?: state
       is GenEvent.Finished -> {
-        val streaming = state.streaming ?: return state
-        val status =
-          if (event.stats.stopReason == StopReason.CANCELLED) MessageStatus.STOPPED
-          else MessageStatus.COMPLETE
+        val streaming = state.streaming?.takeIf { it.id == event.assistantId } ?: return state
+        val status = statusFor(event.stats.stopReason)
         state.copy(
           streaming = null,
           lastFinished =
@@ -81,11 +96,15 @@ object ChatReducer {
         )
       }
       is GenEvent.Failed ->
-        state.copy(
-          streaming = null,
-          lastFinished = state.streaming?.copy(status = MessageStatus.ERROR),
-          error = event.message,
-        )
+        if (event.assistantId != null && state.streaming != null && state.streaming.id != event.assistantId) {
+          state
+        } else {
+          state.copy(
+            streaming = null,
+            lastFinished = state.streaming?.copy(status = MessageStatus.ERROR) ?: state.lastFinished,
+            error = event.message,
+          )
+        }
       GenEvent.ErrorShown -> state.copy(error = null)
     }
 
