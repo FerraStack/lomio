@@ -29,8 +29,8 @@ class AskTileService : TileService() {
       qsTile?.apply {
         label = getString(R.string.tile_ask)
         state = Tile.STATE_INACTIVE
-        if (Build.VERSION.SDK_INT >= 29) subtitle = name ?: "New chat"
-        contentDescription = if (name != null) "Ask Lomio, $name" else "Ask Lomio"
+        if (Build.VERSION.SDK_INT >= 29) subtitle = name ?: getString(R.string.chat_new)
+        contentDescription = if (name != null) getString(R.string.tile_ask_with, name) else getString(R.string.tile_ask)
         updateTile()
       }
     }

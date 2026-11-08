@@ -393,6 +393,10 @@
     <string name="about_version">Lomio %1$s</string>
     <string name="api_couldnt_start">Couldn\'t start: %1$s</string>
     <string name="drawer_export_named">Export “%1$s”</string>
+    <string name="api_key_local">Require the API key on this phone too</string>
+    <string name="api_key_local_on">Apps on this phone need the key below</string>
+    <string name="api_key_local_off">Off: any app on this phone can use the server without a key</string>
+    <string name="api_no_key_note">No key needed: any app on this phone can use the server.</string>
     <plurals name="search_messages_count">
         <item quantity="one">%1$d message</item>
         <item quantity="other">%1$d messages</item>

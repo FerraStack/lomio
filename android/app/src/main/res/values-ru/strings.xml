@@ -392,6 +392,10 @@
     <string name="about_version">Lomio %1$s</string>
     <string name="api_couldnt_start">Не удалось запустить: %1$s</string>
     <string name="drawer_export_named">Экспорт «%1$s»</string>
+    <string name="api_key_local">Требовать ключ API и на этом телефоне</string>
+    <string name="api_key_local_on">Приложениям на этом телефоне нужен ключ ниже</string>
+    <string name="api_key_local_off">Выключено: любое приложение на этом телефоне может пользоваться сервером без ключа</string>
+    <string name="api_no_key_note">Ключ не нужен: сервером может пользоваться любое приложение на этом телефоне.</string>
     <plurals name="search_messages_count">
         <item quantity="one">%1$d сообщение</item>
         <item quantity="few">%1$d сообщения</item>

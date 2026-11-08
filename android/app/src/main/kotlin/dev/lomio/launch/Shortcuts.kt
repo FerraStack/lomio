@@ -6,6 +6,7 @@ import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import dev.lomio.R
 import dev.lomio.data.db.ConversationSummary
+import dev.lomio.ui.components.DEFAULT_CHAT_TITLE
 
 /** The dynamic "continue your last chat" launcher shortcut. */
 object Shortcuts {
@@ -15,8 +16,8 @@ object Shortcuts {
   fun lastChat(history: List<ConversationSummary>): ConversationSummary? = history.maxByOrNull { it.updatedAt }
 
   /** Launchers truncate short labels around 10–12 characters and long ones around 25. */
-  fun labels(title: String): Pair<String, String> {
-    val t = title.trim().ifEmpty { "Last chat" }
+  fun labels(title: String, fallback: String = "Last chat"): Pair<String, String> {
+    val t = title.trim().ifEmpty { fallback }
     return ellipsize(t, 12) to ellipsize(t, 25)
   }
 
@@ -27,7 +28,8 @@ object Shortcuts {
       ShortcutManagerCompat.removeDynamicShortcuts(context, listOf(LAST_CHAT_ID))
       return
     }
-    val (short, long) = labels(chat.title)
+    val title = if (chat.title == DEFAULT_CHAT_TITLE) context.getString(R.string.chat_new) else chat.title
+    val (short, long) = labels(title, fallback = context.getString(R.string.shortcut_last_chat))
     val info =
       ShortcutInfoCompat.Builder(context, LAST_CHAT_ID)
         .setShortLabel(short)
