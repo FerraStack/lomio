@@ -29,6 +29,10 @@ data class AppSettings(
   val hfToken: String = "",
   val generation: GenerationSettings = GenerationSettings.DEFAULTS,
   val load: LoadSettings = LoadSettings(nCtx = 4096, nThreads = 0, nBatch = 512, useMmap = true),
+  /** Experimental: offload layers to the GPU (OpenCL, Adreno). Off by default. */
+  val gpuEnabled: Boolean = false,
+  /** Layers to offload when [gpuEnabled]; 99 = all of them for any phone-sized model. */
+  val gpuLayers: Int = 99,
 ) {
   companion object {
     const val DEFAULT_SYSTEM_PROMPT = "You are a helpful, concise assistant."
@@ -75,6 +79,8 @@ class SettingsRepository(
       }
       prefs[GENERATION] = SettingsJson.encodeGen(next.generation)!!
       prefs[LOAD] = SettingsJson.encodeLoad(next.load)!!
+      prefs[GPU_ENABLED] = next.gpuEnabled
+      prefs[GPU_LAYERS] = next.gpuLayers
     }
   }
 
@@ -92,6 +98,8 @@ class SettingsRepository(
       hfToken = p[HF_TOKEN_SEALED]?.let(::openToken) ?: p[HF_TOKEN] ?: d.hfToken,
       generation = d.generation.overlay(SettingsJson.decodeGen(p[GENERATION])),
       load = d.load.overlay(SettingsJson.decodeLoad(p[LOAD])),
+      gpuEnabled = p[GPU_ENABLED] ?: d.gpuEnabled,
+      gpuLayers = p[GPU_LAYERS] ?: d.gpuLayers,
     )
   }
 
@@ -109,5 +117,7 @@ class SettingsRepository(
     val HF_TOKEN_SEALED = stringPreferencesKey("hf_token_sealed")
     val GENERATION = stringPreferencesKey("generation_json")
     val LOAD = stringPreferencesKey("load_json")
+    val GPU_ENABLED = booleanPreferencesKey("gpu_enabled")
+    val GPU_LAYERS = intPreferencesKey("gpu_layers")
   }
 }

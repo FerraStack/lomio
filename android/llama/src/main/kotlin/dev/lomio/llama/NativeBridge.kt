@@ -68,7 +68,7 @@ internal object NativeBridge {
 
   /**
    * longs: `[nParams, sizeBytes, nCtxTrain, nCtx, nLayer, supportsThinking, supportsVision]`;
-   * strings: `[description, architecture, chatTemplate]`.
+   * strings: `[description, architecture, chatTemplate, backend, gpuNote]`.
    */
   external fun nativeModelInfo(handle: Long, longs: LongArray, strings: Array<ByteArray?>)
 
@@ -108,6 +108,6 @@ internal object NativeBridge {
     opId: Long,
   )
 
-  /** out: `[ppTps, ppStd, tgTps, tgStd]`; returns the comma-separated backend list. */
+  /** out: `[ppTps, ppStd, tgTps, tgStd]`; returns where the model runs (see [ModelInfo.backend]). */
   external fun nativeBench(handle: Long, pp: Int, tg: Int, reps: Int, out: DoubleArray, opId: Long): ByteArray
 }

@@ -72,6 +72,8 @@ class ModelManager(
   private val _activeModelId = MutableStateFlow<String?>(null)
   private val _crashedModelId = MutableStateFlow<String?>(null)
   private val _pending = MutableStateFlow<PendingLoad?>(null)
+  private val _gpuNotice = MutableStateFlow<String?>(null)
+  private var crashedOnGpu = false
   private var activeLoad: LoadSettings? = null
 
   /** Load settings the active model was loaded with; null when nothing is loaded. */
@@ -87,6 +89,12 @@ class ModelManager(
 
   /** A load waiting for the user to accept a memory warning. */
   val pendingConfirmation: StateFlow<PendingLoad?> = _pending.asStateFlow()
+
+  /**
+   * Why GPU acceleration is not in effect although it is turned on (the last load fell back to
+   * the CPU), or that it was turned off after a crash. Null when there is nothing to say.
+   */
+  val gpuNotice: StateFlow<String?> = _gpuNotice.asStateFlow()
 
   suspend fun loadSettingsFor(modelId: String): LoadSettings {
     val global = settings.current().load
@@ -127,9 +135,16 @@ class ModelManager(
 
       // The vision projector loads (and runs its warm-up encode) inside the guarded load too.
       val mmproj = model.mmprojPath?.takeIf { File(it).exists() }
-      crashGuard.beginLoad(modelId)
+      // GPU (experimental, opt-in): the OpenCL driver initialises inside the guarded load, so a
+      // crash there turns GPU acceleration off on the next start (handleGpuCrash).
+      val app = settings.current()
+      val gpuLayers = if (app.gpuEnabled) app.gpuLayers.coerceAtLeast(1) else 0
+      crashGuard.beginLoad(modelId, gpu = gpuLayers > 0)
       try {
-        val info = engine.load(path, load.toLoadParams().copy(mmprojPath = mmproj))
+        val info = engine.load(path, load.toLoadParams().copy(mmprojPath = mmproj, nGpuLayers = gpuLayers))
+        _gpuNotice.value =
+          if (gpuLayers > 0 && info.gpuNote != null) "GPU acceleration isn't working (${info.gpuNote}). Running on the CPU."
+          else null
         _activeModelId.value = modelId
         activeLoad = load
         _crashedModelId.value = null
@@ -168,7 +183,22 @@ class ModelManager(
 
   /** Process start (any reason, including WorkManager): only reads the crash marker. */
   fun onProcessStart() {
-    crashGuard.consumeCrashedLoad()?.let { _crashedModelId.value = it }
+    crashGuard.consumeCrashedLoad()?.let {
+      _crashedModelId.value = it
+      crashedOnGpu = crashGuard.crashedWithGpu
+    }
+  }
+
+  /** After a crash during a GPU load: turn GPU acceleration off so the next load uses the CPU. */
+  suspend fun handleGpuCrash() {
+    if (!crashedOnGpu) return
+    crashedOnGpu = false
+    settings.update { it.copy(gpuEnabled = false) }
+    _gpuNotice.value = "The app closed while loading a model on the GPU, so GPU acceleration was turned off."
+  }
+
+  fun dismissGpuNotice() {
+    _gpuNotice.value = null
   }
 
   /**

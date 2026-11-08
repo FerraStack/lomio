@@ -26,20 +26,23 @@ class FakeEngine(var nCtx: Int = 4096) : InferenceEngine {
   var failWith: Throwable? = null
   var loadFailure: Throwable? = null
   var lastLoadParams: LoadParams? = null
-
-  private fun info(vision: Boolean = false) =
-    ModelInfo("fake 1B", "llama", 1_000_000_000, 600_000_000, 8192, nCtx, 16, null, false, supportsVision = vision)
+  /** Simulated reason the GPU can't be used; null = GPU loads work. */
+  var gpuUnavailable: String? = null
 
   override suspend fun load(path: String, params: LoadParams): ModelInfo {
     loadFailure?.let { throw it }
     loads += path
     lastLoadParams = params
-    if (params.mmprojPath != null) {
-      nCtx = params.nCtx
-      return info(vision = true).also { state.value = EngineState.Loaded(path, it) }
-    }
     nCtx = params.nCtx
-    return info().also { state.value = EngineState.Loaded(path, it) }
+    val gpu = params.nGpuLayers != 0
+    val info =
+      ModelInfo(
+        "fake 1B", "llama", 1_000_000_000, 600_000_000, 8192, nCtx, 16, null, false,
+        supportsVision = params.mmprojPath != null,
+        backend = if (gpu && gpuUnavailable == null) "GPU (OpenCL): Fake Adreno · 16/16 layers" else "CPU",
+        gpuNote = gpuUnavailable.takeIf { gpu },
+      )
+    return info.also { state.value = EngineState.Loaded(path, it) }
   }
 
   override suspend fun unload() {

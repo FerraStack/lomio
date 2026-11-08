@@ -62,6 +62,10 @@ import dev.lomio.data.AttachmentStore
 import org.junit.rules.TemporaryFolder
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import dev.lomio.ui.settings.SettingsScreen
+import dev.lomio.ui.settings.GpuControls
+import dev.lomio.domain.GpuSupport
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import dev.lomio.ui.theme.LomioTheme
 import org.junit.Rule
 import org.junit.Test
@@ -755,6 +759,48 @@ class ScreenshotTest {
   @Test fun benchmarkLight() = shoot("benchmark", dark = false) { BenchmarkScreen(bench, {}, {}, {}) }
 
   @Test fun benchmarkDark() = shoot("benchmark", dark = true) { BenchmarkScreen(bench, {}, {}, {}) }
+
+  /** GPU on: where the model runs is shown above the results (here: the OpenCL backend). */
+  private val benchGpu =
+    bench.copy(
+      backend = "GPU (OpenCL): QUALCOMM Adreno(TM) 750 · 28/28 layers",
+      result = bench.result!!.copy(backend = "GPU (OpenCL): QUALCOMM Adreno(TM) 750 · 28/28 layers"),
+    )
+
+  @Test fun benchmarkGpuLight() = shoot("benchmark_gpu", dark = false) { BenchmarkScreen(benchGpu, {}, {}, {}) }
+
+  /** GPU on but unusable (e.g. the x86_64 emulator): the CPU fallback and its reason. */
+  private val benchFallback =
+    bench.copy(
+      backend = "CPU",
+      gpuNote = "this build has no GPU backend for this CPU architecture",
+      result = bench.result!!.copy(backend = "CPU"),
+    )
+
+  @Test fun benchmarkGpuFallbackLight() = shoot("benchmark_gpu_fallback", dark = false) { BenchmarkScreen(benchFallback, {}, {}, {}) }
+
+  private fun gpuSettings(enabled: Boolean, gpu: GpuSupport) =
+    @Composable {
+      androidx.compose.material3.Surface {
+        androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(16.dp)) {
+          GpuControls(AppSettings(gpuEnabled = enabled, gpuLayers = 99), gpu) {}
+        }
+      }
+    }
+
+  @Test
+  fun settingsGpuLight() =
+    shoot("settings_gpu", dark = false) { gpuSettings(true, GpuSupport(true, "Adreno GPU with OpenCL"))() }
+
+  @Test
+  fun settingsGpuDark() =
+    shoot("settings_gpu", dark = true) { gpuSettings(true, GpuSupport(true, "Adreno GPU with OpenCL"))() }
+
+  @Test
+  fun settingsGpuUnavailableLight() =
+    shoot("settings_gpu_unavailable", dark = false) {
+      gpuSettings(false, GpuSupport.evaluate("arm64-v8a", "Google", "tensor", hasOpenClLibrary = false))()
+    }
 
   @Test
   fun drawerLight() =

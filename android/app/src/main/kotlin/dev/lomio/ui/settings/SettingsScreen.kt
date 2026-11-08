@@ -55,12 +55,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.lomio.data.settings.AppSettings
 import dev.lomio.data.settings.ThemeMode
 import dev.lomio.domain.GenerationSettings
+import dev.lomio.domain.GpuSupport
 import dev.lomio.domain.LoadSettings
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -75,6 +78,7 @@ fun SettingsScreen(
   modifier: Modifier = Modifier,
   tokenCheck: TokenCheckState? = null,
   onTestToken: () -> Unit = {},
+  gpu: GpuSupport = GpuSupport.UNKNOWN,
 ) {
   Scaffold(
     modifier = modifier,
@@ -132,6 +136,7 @@ fun SettingsScreen(
         onChange { it.copy(unloadAfterMinutes = (v / 5).roundToInt() * 5) }
       }
       LoadControls(settings.load) { l -> onChange { it.copy(load = l) } }
+      GpuControls(settings, gpu, onChange)
 
       Section("Downloads")
       LocalTextField(
@@ -185,6 +190,39 @@ private fun LoadControls(l: LoadSettings, onChange: (LoadSettings) -> Unit) {
     style = MaterialTheme.typography.bodySmall,
     color = MaterialTheme.colorScheme.onSurfaceVariant,
   )
+}
+
+/** "GPU acceleration (experimental)": off by default, only offered on Adreno + OpenCL phones. */
+@Composable
+fun GpuControls(settings: AppSettings, gpu: GpuSupport, onChange: ((AppSettings) -> AppSettings) -> Unit) {
+  // Turning it off always works, even if the phone no longer qualifies.
+  val canToggle = gpu.available || settings.gpuEnabled
+  Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.weight(1f)) {
+      Text("GPU acceleration (experimental)", style = MaterialTheme.typography.bodyLarge)
+      Text(
+        if (gpu.available) {
+          "Runs layers on the Adreno GPU with OpenCL. Often faster at reading long prompts, not always " +
+            "at writing; if the GPU fails, the model loads on the CPU."
+        } else {
+          "Not available: ${gpu.reason}."
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+    Switch(
+      checked = settings.gpuEnabled,
+      onCheckedChange = { v -> onChange { it.copy(gpuEnabled = v) } },
+      enabled = canToggle,
+      modifier = Modifier.semantics { contentDescription = "GPU acceleration (experimental)" },
+    )
+  }
+  if (settings.gpuEnabled) {
+    SliderRow("Layers on the GPU (99 = all)", settings.gpuLayers.coerceIn(1, 99).toFloat(), 1f..99f, 97, "%.0f") { v ->
+      onChange { it.copy(gpuLayers = v.roundToInt()) }
+    }
+  }
 }
 
 /**

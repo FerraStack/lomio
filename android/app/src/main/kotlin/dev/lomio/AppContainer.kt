@@ -60,7 +60,11 @@ class AppContainer(context: Context) {
   val attachments = AttachmentStore(File(appContext.filesDir, "attachments"))
   val chats = ChatRepository(db, attachmentPath = { attachments.file(it).absolutePath })
 
-  val engine: InferenceEngine = LlamaEngine(appContext.applicationInfo.nativeLibraryDir)
+  val engine: InferenceEngine =
+    LlamaEngine(
+      appContext.applicationInfo.nativeLibraryDir,
+      gpuKernelCacheDir = java.io.File(appContext.cacheDir, "opencl-kernels").apply { mkdirs() }.absolutePath,
+    )
   val crashGuard = CrashGuard(appContext.getSharedPreferences("crash_guard", Context.MODE_PRIVATE))
   val memory = AndroidMemoryProvider(appContext)
   val modelManager = ModelManager(engine, models, settings, crashGuard, memory)

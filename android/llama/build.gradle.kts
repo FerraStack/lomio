@@ -28,6 +28,8 @@ android {
             "-DANDROID_STL=c++_shared",
             "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
           )
+        // -Plomio.opencl=false leaves the experimental OpenCL GPU backend out (arm64 only anyway).
+        if (providers.gradleProperty("lomio.opencl").orNull == "false") arguments += "-DLOMIO_OPENCL=OFF"
         // CI sets LOMIO_CCACHE=1 to cache the llama.cpp build between runs.
         if (providers.environmentVariable("LOMIO_CCACHE").orNull == "1") {
           arguments += listOf("-DCMAKE_C_COMPILER_LAUNCHER=ccache", "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
@@ -53,6 +55,8 @@ android {
     // The CPU backends (libggml-cpu-*.so) are dlopen()ed from nativeLibraryDir at runtime,
     // so they must be extracted to disk. Apps using this module must set the same option.
     jniLibs.useLegacyPackaging = true
+    // Link-time stub only (see src/main/cpp/CMakeLists.txt): the device provides the real one.
+    jniLibs.excludes += "**/libOpenCL.so"
   }
 }
 

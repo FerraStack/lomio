@@ -74,6 +74,51 @@ class ModelManagerTest {
   }
 
   @Test
+  fun gpuIsOptInAndFallsBackWithANotice() = runTest {
+    val (mm, settings) = manager()
+    model("a", 1 * gib)
+    assertTrue(mm.load("a") is LoadOutcome.Loaded)
+    assertEquals("GPU is off by default", 0, engine.lastLoadParams!!.nGpuLayers)
+
+    settings.update { it.copy(gpuEnabled = true, gpuLayers = 20) }
+    assertTrue(mm.load("a") is LoadOutcome.Loaded)
+    assertEquals(20, engine.lastLoadParams!!.nGpuLayers)
+    assertNull(mm.gpuNotice.value)
+
+    engine.gpuUnavailable = "no supported OpenCL GPU found"
+    val r = mm.load("a")
+    assertTrue(r is LoadOutcome.Loaded)
+    assertEquals("CPU", (r as LoadOutcome.Loaded).info.backend)
+    assertTrue(mm.gpuNotice.value!!.contains("no supported OpenCL GPU found"))
+    mm.dismissGpuNotice()
+    assertNull(mm.gpuNotice.value)
+  }
+
+  @Test
+  fun crashDuringAGpuLoadTurnsGpuOff() = runTest {
+    val (mm, settings) = manager()
+    settings.update { it.copy(gpuEnabled = true) }
+    // A previous process died inside a GPU load.
+    CrashGuard(prefs).beginLoad("a", gpu = true)
+    mm.onProcessStart()
+    assertEquals("a", mm.crashedModelId.value)
+    mm.handleGpuCrash()
+    assertEquals(false, settings.current().gpuEnabled)
+    assertTrue(mm.gpuNotice.value!!.contains("turned off"))
+  }
+
+  @Test
+  fun crashDuringACpuLoadLeavesGpuAlone() = runTest {
+    val (mm, settings) = manager()
+    settings.update { it.copy(gpuEnabled = true) }
+    CrashGuard(prefs).beginLoad("a", gpu = false)
+    mm.onProcessStart()
+    mm.handleGpuCrash()
+    assertEquals(true, settings.current().gpuEnabled)
+    assertNull(mm.gpuNotice.value)
+  }
+
+  @Test
   fun tightModelNeedsConfirmation() = runTest {
     val (mm, _) = manager()
     model("a", 2 * gib)

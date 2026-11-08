@@ -6,7 +6,11 @@ data class LoadParams(
   /** 0 = pick automatically from the number of online cores. */
   val nThreads: Int = 0,
   val nBatch: Int = 512,
-  /** CPU-only for now; kept so a GPU backend can be added later. */
+  /**
+   * Layers to offload to the GPU (experimental OpenCL backend, Adreno). 0 = CPU only; a
+   * negative value = all layers. If the GPU can't be used the model loads on the CPU and
+   * [ModelInfo.gpuNote] says why.
+   */
   val nGpuLayers: Int = 0,
   val useMmap: Boolean = true,
   /** Jinja chat template to use instead of the GGUF's own; null = the GGUF's. */
@@ -61,6 +65,10 @@ data class ModelInfo(
   val supportsThinking: Boolean,
   /** True if a vision projector is loaded, so [ChatMessage.images] are seen by the model. */
   val supportsVision: Boolean = false,
+  /** Where the weights run: "CPU" or "GPU (OpenCL): <device> · <n>/<total> layers". */
+  val backend: String = "CPU",
+  /** Set when GPU layers were requested but the model runs on the CPU: why. */
+  val gpuNote: String? = null,
 )
 
 /** Header metadata read straight from a GGUF file without loading weights. */

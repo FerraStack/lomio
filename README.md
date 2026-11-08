@@ -46,10 +46,14 @@ stats line. arm64 phones are not tested yet:
   projector downloads with the weights. In chat, attach up to four images with the system Photo
   Picker (no storage permission); llama.cpp's `libmtmd` encodes them. Images are kept in app
   storage, scaled to at most 1024 px. The memory-fit check counts the projector.
-- A local benchmark (pp/tg tokens per second).
+- GPU acceleration (experimental, off by default): llama.cpp's OpenCL backend for Snapdragon
+  (Adreno) phones, offered only where the phone has an OpenCL driver. It falls back to the CPU
+  when the GPU can't be used, and turns itself off after a crash during a GPU load. See
+  [docs/GPU.md](docs/GPU.md); untested on real phones so far.
+- A local benchmark (pp/tg tokens per second, and where the model runs).
 
 Not done yet: chat export/import,
-split GGUF files, a vision projector for imported (local) models, GPU backends, a tablet layout. Screenshots of every screen are
+split GGUF files, a vision projector for imported (local) models, a tablet layout. Screenshots of every screen are
 posted by CI on each pull request; README screenshots are a TODO.
 
 ## Architecture
@@ -79,8 +83,9 @@ How the parts work:
 - **Native libraries.** On arm64, llama.cpp is built with `GGML_BACKEND_DL` and
   `GGML_CPU_ALL_VARIANTS` plus KleidiAI. Each ARM feature level gets its own CPU backend `.so`
   (armv8.0 up to armv9.2/SME), and the best one is loaded at runtime from
-  `nativeLibraryDir`. x86_64 (emulator only) gets one SSE4.2 baseline module. All native code is
-  built as Release, with 16 KB page alignment.
+  `nativeLibraryDir`. x86_64 (emulator only) gets one SSE4.2 baseline module. arm64 also gets
+  the OpenCL GPU backend as `liblomio-opencl.so`, loaded only when GPU acceleration is on
+  ([docs/GPU.md](docs/GPU.md)). All native code is built as Release, with 16 KB page alignment.
 - **Settings resolution.** For each setting, a value set on the chat wins, then the model's
   setting, then the global default.
 - **Crash-loop guard.** The app writes a marker before each model load and clears it after the
@@ -98,6 +103,8 @@ Prerequisites:
 - JDK 17 or newer. CI uses Temurin 21; JDK 27 also works locally with the pinned Gradle 9.8.2.
 - An Android SDK with platform 37, NDK `30.0.16248370` and CMake `3.31.6`. AGP installs the
   platform automatically once the licenses are accepted.
+- Python 3: the OpenCL backend embeds its kernels at build time. `-Plomio.opencl=false` leaves
+  the GPU backend out.
 
 ```sh
 git clone --recurse-submodules https://github.com/FerraStack/lomio
@@ -132,6 +139,8 @@ ccache.
      the next identical prompt reuses the tokens decoded before the stop
    - runs `StorageEndToEndTest`: open Storage through the UI, check the model's size on disk,
      remove a leftover file and temporary files, delete the model and check its file is gone
+   - runs `GpuFallbackTest`: GPU acceleration on, where there is no GPU backend; the model
+     must load on the CPU and show why, in the chat and on the Benchmark screen
    - runs `VisionChatTest` with SmolVLM-256M Q8_0 and its Q8_0 projector (279 MB, cached):
      attach an image through the attach button (the Photo Picker's intent is answered by
      espresso-intents), send a question and check for a non-empty answer
