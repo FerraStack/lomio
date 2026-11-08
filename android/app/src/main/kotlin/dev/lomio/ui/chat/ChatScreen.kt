@@ -102,6 +102,9 @@ import dev.lomio.ui.settings.OverridableGenerationControls
 import dev.lomio.domain.GenerationSettings
 import dev.lomio.ui.components.Format
 import kotlinx.coroutines.launch
+import androidx.compose.ui.res.stringResource
+import dev.lomio.R
+import dev.lomio.ui.components.chatTitle
 
 enum class ModelStatus { NONE, LOADING, LOADED, FAILED }
 
@@ -215,51 +218,51 @@ fun ChatScreen(
     topBar = {
       CenterAlignedTopAppBar(
         navigationIcon = {
-          IconButton(onClick = actions.onOpenDrawer) { Icon(Icons.Outlined.Menu, "Open menu") }
+          IconButton(onClick = actions.onOpenDrawer) { Icon(Icons.Outlined.Menu, stringResource(R.string.action_open_menu)) }
         },
         title = {
           Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.clickable { showPicker = true },
           ) {
-            Text(state.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(chatTitle(state.title), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically) {
               StatusDot(state.modelStatus)
               Spacer(Modifier.size(6.dp))
               Text(
-                state.modelName ?: "No model loaded",
+                state.modelName ?: stringResource(R.string.chat_no_model),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
               )
-              Icon(Icons.Outlined.ExpandMore, "Choose model", Modifier.size(16.dp))
+              Icon(Icons.Outlined.ExpandMore, stringResource(R.string.chat_choose_model), Modifier.size(16.dp))
             }
           }
         },
         actions = {
           state.contextUsage?.takeIf { it.nearlyFull }?.let { usage -> ContextMeter(usage) { dialog = "context" } }
           Box {
-            IconButton(onClick = { showMenu = true }) { Icon(Icons.Outlined.MoreVert, "More") }
+            IconButton(onClick = { showMenu = true }) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.action_more)) }
             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-              DropdownMenuItem(text = { Text("Generation settings (this chat)") }, onClick = { showMenu = false; dialog = "gen" })
+              DropdownMenuItem(text = { Text(stringResource(R.string.chat_menu_gen)) }, onClick = { showMenu = false; dialog = "gen" })
               val canSummarize =
                 !state.isGenerating && state.modelStatus == ModelStatus.LOADED && state.messages.any { it.role == MessageRole.ASSISTANT }
               DropdownMenuItem(
-                text = { Text("Summarize & continue") },
+                text = { Text(stringResource(R.string.chat_menu_summarize)) },
                 enabled = canSummarize,
                 onClick = { showMenu = false; dialog = "context" },
               )
-              DropdownMenuItem(text = { Text("System prompt (this chat)") }, onClick = { showMenu = false; dialog = "system" })
+              DropdownMenuItem(text = { Text(stringResource(R.string.chat_menu_system_prompt)) }, onClick = { showMenu = false; dialog = "system" })
               if (state.modelStatus == ModelStatus.LOADED) {
-                DropdownMenuItem(text = { Text("Model settings") }, onClick = { showMenu = false; actions.onOpenModelSettings() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.chat_menu_model_settings)) }, onClick = { showMenu = false; actions.onOpenModelSettings() })
               }
-              DropdownMenuItem(text = { Text("Rename") }, onClick = { showMenu = false; dialog = "rename" })
+              DropdownMenuItem(text = { Text(stringResource(R.string.action_rename)) }, onClick = { showMenu = false; dialog = "rename" })
               if (state.conversationId != null) {
-                DropdownMenuItem(text = { Text("Export chat") }, onClick = { showMenu = false; dialog = "export" })
+                DropdownMenuItem(text = { Text(stringResource(R.string.chat_menu_export)) }, onClick = { showMenu = false; dialog = "export" })
               }
-              DropdownMenuItem(text = { Text("New chat") }, onClick = { showMenu = false; actions.onNewChat() })
-              DropdownMenuItem(text = { Text("Delete") }, onClick = { showMenu = false; actions.onDelete() })
+              DropdownMenuItem(text = { Text(stringResource(R.string.chat_new)) }, onClick = { showMenu = false; actions.onNewChat() })
+              DropdownMenuItem(text = { Text(stringResource(R.string.action_delete)) }, onClick = { showMenu = false; actions.onDelete() })
             }
           }
         },
@@ -269,34 +272,34 @@ fun ChatScreen(
     Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
       state.crashedModelName?.let {
         WarningBanner(
-          "Loading $it crashed last time, so it wasn't loaded automatically. Try a smaller context size or model.",
+          stringResource(R.string.chat_crashed, it),
           actions.onDismissCrash,
         )
       }
       state.loadError?.let {
-        WarningBanner(it, actions.onDismissLoadError, actionLabel = "Choose model", onAction = { showPicker = true })
+        WarningBanner(it, actions.onDismissLoadError, actionLabel = stringResource(R.string.chat_choose_model), onAction = { showPicker = true })
       }
       state.gpuNotice?.let { WarningBanner(it, actions.onDismissGpuNotice) }
       Box(Modifier.weight(1f).fillMaxWidth()) {
         when {
           state.messages.isEmpty() && state.modelStatus == ModelStatus.LOADING ->
-            EmptyState(title = "Loading ${state.modelName ?: "model"}…") { CircularProgressIndicator() }
+            EmptyState(title = state.modelName?.let { stringResource(R.string.chat_loading_model, it) } ?: stringResource(R.string.chat_loading_model_generic)) { CircularProgressIndicator() }
           state.messages.isEmpty() && state.downloadedModels.isEmpty() ->
-            EmptyState(title = "Download a model to start") {
+            EmptyState(title = stringResource(R.string.chat_empty_no_models)) {
               Button(onClick = actions.onManageModels) {
                 Icon(Icons.Outlined.Download, null)
                 Spacer(Modifier.size(8.dp))
-                Text("Browse models")
+                Text(stringResource(R.string.chat_browse_models))
               }
             }
           state.messages.isEmpty() && state.modelStatus != ModelStatus.LOADED ->
-            EmptyState(title = if (state.modelStatus == ModelStatus.FAILED) "Model failed to load" else "Load a model to chat") {
+            EmptyState(title = stringResource(if (state.modelStatus == ModelStatus.FAILED) R.string.chat_model_failed else R.string.chat_load_to_chat)) {
               state.lastModel?.let { m ->
-                Button(onClick = { actions.onLoadModel(m.id) }) { Text("Load ${m.name}") }
+                Button(onClick = { actions.onLoadModel(m.id) }) { Text(stringResource(R.string.chat_load_named, m.name)) }
               }
-              OutlinedButton(onClick = { showPicker = true }) { Text("Choose another") }
+              OutlinedButton(onClick = { showPicker = true }) { Text(stringResource(R.string.chat_choose_another)) }
             }
-          state.messages.isEmpty() -> EmptyState(title = "How can I help?") {}
+          state.messages.isEmpty() -> EmptyState(title = stringResource(R.string.chat_empty_prompt)) {}
           else ->
             MessageList(
               messages = state.messages,
@@ -347,22 +350,22 @@ fun ChatScreen(
     val user = m.role == MessageRole.USER
     AlertDialog(
       onDismissRequest = { deleting = null },
-      title = { Text(if (user) "Delete message?" else "Delete reply?") },
+      title = { Text(stringResource(if (user) R.string.chat_delete_message_title else R.string.chat_delete_reply_title)) },
       text = {
         Text(
           when {
-            user -> "This message and the replies under it will be deleted."
-            m.versionCount > 1 -> "This version of the reply will be deleted. The other versions stay."
-            else -> "This reply will be deleted."
+            user -> stringResource(R.string.chat_delete_message_body)
+            m.versionCount > 1 -> stringResource(R.string.chat_delete_version_body)
+            else -> stringResource(R.string.chat_delete_reply_body)
           }
         )
       },
       confirmButton = {
         TextButton(onClick = { deleting = null; actions.onDeleteMessage(m.id) }) {
-          Text("Delete", color = MaterialTheme.colorScheme.error)
+          Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
         }
       },
-      dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
+      dismissButton = { TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.action_cancel)) } },
     )
   }
 
@@ -410,16 +413,16 @@ fun ChatScreen(
         onDismiss = { dialog = null },
       )
     "rename" ->
-      TextInputDialog("Rename chat", state.title, singleLine = true, onDismiss = { dialog = null }) {
+      TextInputDialog(stringResource(R.string.chat_rename_title), chatTitle(state.title), singleLine = true, onDismiss = { dialog = null }) {
         actions.onRename(it)
         dialog = null
       }
     "system" ->
       TextInputDialog(
-        "System prompt (this chat)",
+        stringResource(R.string.chat_menu_system_prompt),
         state.systemPrompt.orEmpty(),
         singleLine = false,
-        hint = "Empty = use the model or global default",
+        hint = stringResource(R.string.chat_system_prompt_hint),
         onDismiss = { dialog = null },
       ) {
         actions.onSetSystemPrompt(it)
@@ -489,7 +492,7 @@ private fun MessageList(
         onClick = { scope.launch { listState.animateScrollToItem(0) } },
         modifier = Modifier.align(Alignment.BottomCenter).padding(8.dp),
       ) {
-        Icon(Icons.Outlined.ArrowDownward, "Jump to latest")
+        Icon(Icons.Outlined.ArrowDownward, stringResource(R.string.chat_jump_latest))
       }
     }
   }
@@ -531,12 +534,12 @@ private fun Composer(
         ) {
           Icon(Icons.Outlined.Edit, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
           Text(
-            "Editing message · sends as a new version",
+            stringResource(R.string.chat_editing),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.weight(1f).padding(start = 8.dp),
           )
-          TextButton(onClick = onCancelEdit) { Text("Cancel") }
+          TextButton(onClick = onCancelEdit) { Text(stringResource(R.string.action_cancel)) }
         }
       }
       if (attachments.isNotEmpty()) {
@@ -552,7 +555,7 @@ private fun Composer(
         FilterChip(
           selected = thinkingEnabled,
           onClick = onToggleThinking,
-          label = { Text("Think") },
+          label = { Text(stringResource(R.string.chat_think)) },
           leadingIcon = { Icon(Icons.Outlined.Lightbulb, null, Modifier.size(16.dp)) },
         )
       }
@@ -570,7 +573,7 @@ private fun Composer(
         TextField(
           value = text,
           onValueChange = onTextChange,
-          placeholder = { Text("Message") },
+          placeholder = { Text(stringResource(R.string.chat_message_hint)) },
           minLines = 1,
           maxLines = 6, // grows to ~6 lines, then scrolls
           shape = RoundedCornerShape(24.dp),
@@ -588,7 +591,7 @@ private fun Composer(
         Spacer(Modifier.size(8.dp))
         if (isGenerating) {
           FilledIconButton(onClick = onStop, modifier = Modifier.size(52.dp)) {
-            Icon(Icons.Filled.Stop, "Stop")
+            Icon(Icons.Filled.Stop, stringResource(R.string.chat_stop))
           }
         } else {
           FilledIconButton(
@@ -596,7 +599,7 @@ private fun Composer(
             enabled = canSend && (text.isNotBlank() || attachments.isNotEmpty()),
             modifier = Modifier.size(52.dp),
           ) {
-            Icon(Icons.AutoMirrored.Filled.Send, "Send")
+            Icon(Icons.AutoMirrored.Filled.Send, stringResource(R.string.chat_send))
           }
         }
       }
@@ -620,9 +623,9 @@ fun ChatGenerationSheet(
   val inherited = if (state.modelName != null) "model" else "global"
   ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
-      Text("Generation settings", style = MaterialTheme.typography.titleMedium)
+      Text(stringResource(R.string.chat_gen_title), style = MaterialTheme.typography.titleMedium)
       Text(
-        "For this chat only. Unchanged values follow the ${if (state.modelName != null) "settings of ${state.modelName}" else "global defaults"}.",
+        state.modelName?.let { stringResource(R.string.chat_gen_body_model, it) } ?: stringResource(R.string.chat_gen_body_global),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
@@ -630,9 +633,9 @@ fun ChatGenerationSheet(
       OverridableGenerationControls(state.genBase, state.gen, inheritedFrom = inherited, onChange = onChange)
       val customized = state.gen != GenerationSettings()
       Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-        TextButton(onClick = { onChange(GenerationSettings()) }, enabled = customized) { Text("Reset to $inherited") }
+        TextButton(onClick = { onChange(GenerationSettings()) }, enabled = customized) { Text(stringResource(if (state.modelName != null) R.string.chat_gen_reset_model else R.string.chat_gen_reset_global)) }
         if (state.modelName != null) {
-          FilledTonalButton(onClick = onSaveAsModelDefault, enabled = customized) { Text("Save as model default") }
+          FilledTonalButton(onClick = onSaveAsModelDefault, enabled = customized) { Text(stringResource(R.string.chat_gen_save_default)) }
         }
       }
     }
@@ -650,13 +653,13 @@ fun ModelPickerSheet(
   ModalBottomSheet(onDismissRequest = onDismiss) {
     Column(Modifier.padding(bottom = 24.dp)) {
       Text(
-        "Choose a model",
+        stringResource(R.string.chat_picker_title),
         style = MaterialTheme.typography.titleMedium,
         modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
       )
       if (models.isEmpty()) {
         Text(
-          "No models downloaded yet.",
+          stringResource(R.string.chat_picker_empty),
           modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -675,11 +678,11 @@ fun ModelPickerSheet(
             )
           }
           if (m.loaded) {
-            Text("Loaded", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(stringResource(R.string.chat_picker_loaded), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
           }
         }
       }
-      TextButton(onClick = onManage, modifier = Modifier.padding(horizontal = 16.dp)) { Text("Manage models") }
+      TextButton(onClick = onManage, modifier = Modifier.padding(horizontal = 16.dp)) { Text(stringResource(R.string.chat_manage_models)) }
     }
   }
 }
@@ -743,7 +746,7 @@ private fun WarningBanner(
       val buttonColors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer)
       Row(Modifier.align(Alignment.End)) {
         if (actionLabel != null) TextButton(onClick = onAction, colors = buttonColors) { Text(actionLabel) }
-        TextButton(onClick = onDismiss, colors = buttonColors) { Text("Dismiss") }
+        TextButton(onClick = onDismiss, colors = buttonColors) { Text(stringResource(R.string.action_dismiss)) }
       }
     }
   }
@@ -784,8 +787,8 @@ fun TextInputDialog(
         modifier = Modifier.fillMaxWidth(),
       )
     },
-    confirmButton = { TextButton(onClick = { onConfirm(value) }) { Text("Save") } },
-    dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    confirmButton = { TextButton(onClick = { onConfirm(value) }) { Text(stringResource(R.string.action_save)) } },
+    dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
   )
 }
 
