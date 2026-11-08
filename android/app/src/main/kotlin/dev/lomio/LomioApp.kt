@@ -25,6 +25,8 @@ class LomioApp : Application() {
       container.chats.recoverInterrupted()
       container.settings.migrateSecrets()
       container.modelManager.handleGpuCrash()
+      // Prompt caches of deleted chats.
+      runCatching { container.promptCache.retainOnly(container.db.conversations().allIds().toSet()) }
       // Images of deleted chats (and never-sent drafts) are removed here.
       runCatching { container.attachments.sweep(container.chats.referencedAttachments()) }
       container.settings.settings.map { it.hfToken }.distinctUntilChanged().collect {

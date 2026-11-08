@@ -37,6 +37,11 @@ stats line. arm64 phones are not tested yet:
 - Engine: llama.cpp v0.9.0 through a small JNI layer.
   - Chat templates come from the GGUF via llama.cpp's own `common_chat`.
   - The KV cache is reused when the prompt starts the same as the last one.
+  - Prompt cache: when you switch to another chat, the KV cache of the one you leave is saved
+    to disk (`llama_state_seq_*`, in the app's cache directory). Coming back restores it
+    instead of re-processing the history. Caches are tied to the model file, the chat template
+    and the llama.cpp build. A cache over 512 MB isn't kept, the least recently used caches go
+    above 1 GB in total, and deleted chats' caches are removed on start.
   - Long chats keep their newest turns to fit the context.
   - Stop takes effect promptly, including during prompt processing, and keeps the part of the
     prompt that was already processed. Long prompts show a progress bar.
@@ -191,6 +196,9 @@ ccache.
      the next identical prompt reuses the tokens decoded before the stop
    - runs `StorageEndToEndTest`: open Storage through the UI, check the model's size on disk,
      remove a leftover file and temporary files, delete the model and check its file is gone
+   - runs `PromptCacheTtftTest` with the SmolVLM text model: leave a long chat, come back, and
+     compare the time to first token with and without the saved cache (written to the job
+     summary)
    - runs `GpuFallbackTest`: GPU acceleration on, where there is no GPU backend; the model
      must load on the CPU and show why, in the chat and on the Benchmark screen
    - runs `VisionChatTest` with SmolVLM-256M Q8_0 and its Q8_0 projector (279 MB, cached):

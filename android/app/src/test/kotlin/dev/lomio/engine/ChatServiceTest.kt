@@ -85,6 +85,7 @@ class ChatServiceTest {
     engine.gate!!.complete(Unit)
     s.awaitIdle()
     assertEquals(1, engine.chatCalls)
+    assertEquals("the chat id keys the prompt cache", c.id, engine.lastCacheKey)
     val msgs = chats.messages(c.id)
     assertEquals(listOf(MessageRole.USER, MessageRole.ASSISTANT), msgs.map { it.role })
     assertEquals("Hello", msgs[1].content)

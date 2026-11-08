@@ -189,7 +189,7 @@ class ChatService(
     var reasoning = ""
     var settled = false
     try {
-      engine.chat(history, sampling, enableThinking).collect { ev ->
+      engine.chat(history, sampling, enableThinking, cacheKey = conversationId).collect { ev ->
         when (ev) {
           is GenerationEvent.PromptProgress ->
             dispatch(GenEvent.PromptProgress(assistant.id, ev.done, ev.total))
