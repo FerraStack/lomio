@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static launcher shortcut; "last chat" is a dynamic one (dev.lomio.launch.Shortcuts). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_new_chat"
+        android:shortcutDisabledMessage="@string/shortcut_new_chat_disabled"
+        android:shortcutId="new_chat"
+        android:shortcutLongLabel="@string/shortcut_new_chat_long"
+        android:shortcutShortLabel="@string/shortcut_new_chat_short">
+        <intent
+            android:action="dev.lomio.action.NEW_CHAT"
+            android:targetClass="dev.lomio.MainActivity"
+            android:targetPackage="dev.lomio" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+</shortcuts>

@@ -30,11 +30,15 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <service
@@ -45,6 +49,18 @@
         <receiver
             android:name=".data.download.DownloadActionReceiver"
             android:exported="false" />
+
+        <!-- Quick Settings tile "Ask Lomio": a new chat with the keyboard up. -->
+        <service
+            android:name=".launch.AskTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_ask"
+            android:label="@string/tile_ask"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <!-- Android 13 and older: WorkManager runs model downloads as a dataSync foreground job. -->
         <service

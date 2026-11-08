@@ -199,6 +199,9 @@ ccache.
    - runs `ApiServerEndToEndTest`: switch the local API server on in Settings, then call
      `/v1/models` and `/v1/chat/completions` (streamed and plain) over HTTP against the real
      engine, and check the port closes when it's switched off
+   - runs `ShortcutsEndToEndTest`: the latest-chat shortcut opens that chat, and the Quick
+     Settings tile (added and clicked with `cmd statusbar`) opens a new chat with the message
+     field focused
    - fails on any crash of `dev.lomio` in logcat
 3. **`screenshots-comment`** (pull requests): pushes the PNGs to the orphan `ci-screenshots`
    branch (only the latest run per PR is kept; a push that races another PR is rebased and

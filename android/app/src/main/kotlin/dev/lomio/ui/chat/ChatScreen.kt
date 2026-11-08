@@ -75,6 +75,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -173,7 +176,13 @@ class ChatActions(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Modifier) {
+fun ChatScreen(
+  state: ChatUiState,
+  actions: ChatActions,
+  modifier: Modifier = Modifier,
+  /** Bump to focus the message field and show the keyboard (the "Ask Lomio" tile). */
+  focusComposer: Int = 0,
+) {
   var showPicker by rememberSaveable { mutableStateOf(false) }
   var showMenu by remember { mutableStateOf(false) }
   var dialog by rememberSaveable { mutableStateOf<String?>(null) } // "rename" | "system" | "gen"
@@ -315,6 +324,7 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
           editingId = null
         },
         onStop = actions.onStop,
+        focusRequest = focusComposer,
       )
     }
   }
@@ -478,7 +488,16 @@ private fun Composer(
   onRemoveAttachment: (String) -> Unit,
   onSend: () -> Unit,
   onStop: () -> Unit,
+  focusRequest: Int = 0,
 ) {
+  val focus = remember { FocusRequester() }
+  val keyboard = LocalSoftwareKeyboardController.current
+  LaunchedEffect(focusRequest) {
+    if (focusRequest > 0) {
+      focus.requestFocus()
+      keyboard?.show()
+    }
+  }
   Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
     Column(Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
       if (editing) {
@@ -540,7 +559,7 @@ private fun Composer(
               unfocusedIndicatorColor = Color.Transparent,
               disabledIndicatorColor = Color.Transparent,
             ),
-          modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+          modifier = Modifier.weight(1f).heightIn(min = 52.dp).focusRequester(focus),
         )
         Spacer(Modifier.size(8.dp))
         if (isGenerating) {

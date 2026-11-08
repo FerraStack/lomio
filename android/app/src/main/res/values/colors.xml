@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher shortcut icons: the app's teal accent on its light container tone. -->
+    <color name="shortcut_background">#FFCCF5F4</color>
+    <color name="shortcut_glyph">#FF006A6A</color>
+</resources>

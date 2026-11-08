@@ -18,6 +18,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.LaunchedEffect
 import android.widget.Toast
 import androidx.compose.runtime.DisposableEffect
@@ -31,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.saveable.rememberSaveable
 import dev.lomio.AppContainer
+import dev.lomio.launch.LaunchAction
 import dev.lomio.BuildConfig
 import dev.lomio.domain.Fit
 import dev.lomio.domain.GpuSupport
@@ -77,7 +79,13 @@ private fun Screen.destination() =
   }
 
 @Composable
-fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
+fun LomioRoot(
+  container: AppContainer,
+  settingsVm: SettingsViewModel,
+  /** From a launcher shortcut or the Quick Settings tile; [onLaunchHandled] clears it. */
+  launch: LaunchAction? = null,
+  onLaunchHandled: () -> Unit = {},
+) {
   val chatVm: ChatViewModel = viewModel { ChatViewModel(container) }
   val modelsVm: ModelsViewModel = viewModel { ModelsViewModel(container) }
   val drawerVm: DrawerViewModel = viewModel { DrawerViewModel(container) }
@@ -105,6 +113,22 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
   fun openModelSettings(id: String) {
     settingsModelId = id
     navigate(Screen.MODEL_SETTINGS)
+  }
+
+  var focusComposer by remember { mutableIntStateOf(0) }
+  LaunchedEffect(launch) {
+    when (launch) {
+      is LaunchAction.NewChat -> {
+        chatVm.open(null)
+        if (launch.ask) focusComposer++
+      }
+      // A pinned shortcut can outlive its chat: fall back to a new one.
+      is LaunchAction.OpenChat -> chatVm.open(launch.conversationId.takeIf { container.chats.conversation(it) != null })
+      null -> return@LaunchedEffect
+    }
+    navigate(Screen.CHAT)
+    drawer.close()
+    onLaunchHandled()
   }
 
   BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
@@ -223,6 +247,7 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
       Screen.CHAT ->
         ChatScreen(
           state = chatState,
+          focusComposer = focusComposer,
           actions =
             ChatActions(
               onOpenDrawer = { openDrawer() },
