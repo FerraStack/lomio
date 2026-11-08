@@ -78,6 +78,7 @@ import java.util.Locale
 import kotlin.math.roundToInt
 import androidx.compose.ui.res.stringResource
 import dev.lomio.R
+import dev.lomio.ui.components.systemPromptText
 
 /** Global settings (RESEARCH.md §9.3). Every change is applied immediately via [onChange]. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -139,7 +140,7 @@ fun SettingsScreen(
 
       Section(stringResource(R.string.settings_chat))
       LocalTextField(
-        initial = settings.systemPrompt,
+        initial = systemPromptText(settings.systemPrompt),
         onValueChange = { v -> onChange { it.copy(systemPrompt = v) } },
         label = { Text(stringResource(R.string.settings_default_system_prompt)) },
         minLines = 3,
@@ -355,7 +356,7 @@ fun SliderRow(
   Column(Modifier.padding(vertical = 4.dp)) {
     Row {
       Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-      Text(valueText?.invoke(value) ?: String.format(Locale.US, format, value), style = MaterialTheme.typography.bodyMedium)
+      Text(valueText?.invoke(value) ?: String.format(Locale.getDefault(), format, value), style = MaterialTheme.typography.bodyMedium)
     }
     Slider(
       value = value.coerceIn(range),
