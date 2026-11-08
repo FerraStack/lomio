@@ -50,7 +50,8 @@ class ApiServerEndToEndTest {
 
   private val http = OkHttpClient.Builder().readTimeout(120, TimeUnit.SECONDS).build()
   private val json = "application/json".toMediaType()
-  private val base = "http://127.0.0.1:$PORT/v1"
+  /** Set from the server's own report once it is bound (not assumed to be [PORT]). */
+  private var base = ""
 
   private fun shell(cmd: String): String =
     ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(cmd)).use {
@@ -112,6 +113,13 @@ class ApiServerEndToEndTest {
     compose.onAllNodesWithText("Settings").onFirst().performClick()
     serverSwitch().performScrollTo().performClick()
     compose.waitUntil(20_000) { c.apiServer.status.value is ApiServerStatus.Running }
+    val port = (c.apiServer.status.value as ApiServerStatus.Running).port
+    base = "http://127.0.0.1:$port/v1"
+    assertEquals(PORT, port)
+    // The status is set right after bind; wait until the socket really accepts connections.
+    compose.waitUntil(10_000) {
+      runCatching { java.net.Socket("127.0.0.1", port).use { true } }.getOrDefault(false)
+    }
 
     // GET /v1/models lists the loaded model under its file name.
     http.newCall(Request.Builder().url("$base/models").build()).execute().use { r ->
