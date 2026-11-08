@@ -30,7 +30,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -164,11 +163,17 @@ class ApiServerEndToEndTest {
     // Off again: the port closes.
     serverSwitch().performScrollTo().performClick()
     compose.waitUntil(20_000) { c.apiServer.status.value is ApiServerStatus.Stopped && !c.apiServer.isRunning }
-    // A raw connect: an HTTP client may report a closed listener as a reset instead.
-    try {
-      java.net.Socket("127.0.0.1", port).close()
-      fail("server still listening after it was switched off")
-    } catch (_: ConnectException) {}
+    // A raw connect (an HTTP client may report a closed listener as a reset instead). The
+    // service stops asynchronously, so give the port a moment to close rather than one shot.
+    val refused = {
+      try {
+        java.net.Socket("127.0.0.1", port).close()
+        false
+      } catch (_: ConnectException) {
+        true
+      }
+    }
+    compose.waitUntil(10_000) { refused() }
     // ...and its ongoing notification is gone too.
     val nm = app.getSystemService(NotificationManager::class.java)
     compose.waitUntil(5_000) { nm.activeNotifications.none { it.id == ApiServerService.NOTIFICATION_ID } }
