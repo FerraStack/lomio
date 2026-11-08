@@ -76,6 +76,8 @@ import dev.lomio.domain.GpuSupport
 import dev.lomio.domain.LoadSettings
 import java.util.Locale
 import kotlin.math.roundToInt
+import androidx.compose.ui.res.stringResource
+import dev.lomio.R
 
 /** Global settings (RESEARCH.md §9.3). Every change is applied immediately via [onChange]. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -95,14 +97,14 @@ fun SettingsScreen(
 ) {
   var exportDialog by remember { mutableStateOf(false) }
   if (exportDialog) {
-    ExportFormatDialog("Export all chats", onPick = { exportDialog = false; onExportAll(it) }, onDismiss = { exportDialog = false })
+    ExportFormatDialog(stringResource(R.string.export_all_title), onPick = { exportDialog = false; onExportAll(it) }, onDismiss = { exportDialog = false })
   }
   Scaffold(
     modifier = modifier,
     topBar = {
       TopAppBar(
-        title = { Text("Settings") },
-        navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Outlined.Menu, "Open menu") } },
+        title = { Text(stringResource(R.string.settings_title)) },
+        navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Outlined.Menu, stringResource(R.string.action_open_menu)) } },
       )
     },
   ) { padding ->
@@ -110,8 +112,8 @@ fun SettingsScreen(
       Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
       verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-      Section("Appearance")
-      Text("Theme", style = MaterialTheme.typography.bodyLarge)
+      Section(stringResource(R.string.settings_appearance))
+      Text(stringResource(R.string.settings_theme), style = MaterialTheme.typography.bodyLarge)
       SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         ThemeMode.entries.forEachIndexed { i, mode ->
           SegmentedButton(
@@ -119,37 +121,45 @@ fun SettingsScreen(
             onClick = { onChange { it.copy(theme = mode) } },
             shape = SegmentedButtonDefaults.itemShape(i, ThemeMode.entries.size),
           ) {
-            Text(mode.name.lowercase().replaceFirstChar { it.uppercase() })
+            Text(
+              stringResource(
+                when (mode) {
+                  ThemeMode.SYSTEM -> R.string.theme_system
+                  ThemeMode.LIGHT -> R.string.theme_light
+                  ThemeMode.DARK -> R.string.theme_dark
+                }
+              )
+            )
           }
         }
       }
-      SwitchRow("Dynamic color", "Use colors from your wallpaper (Android 12+)", settings.dynamicColor) { v ->
+      SwitchRow(stringResource(R.string.settings_dynamic_color), stringResource(R.string.settings_dynamic_color_sub), settings.dynamicColor) { v ->
         onChange { it.copy(dynamicColor = v) }
       }
 
-      Section("Chat")
+      Section(stringResource(R.string.settings_chat))
       LocalTextField(
         initial = settings.systemPrompt,
         onValueChange = { v -> onChange { it.copy(systemPrompt = v) } },
-        label = { Text("Default system prompt") },
+        label = { Text(stringResource(R.string.settings_default_system_prompt)) },
         minLines = 3,
         modifier = Modifier.fillMaxWidth(),
       )
-      SwitchRow("Show generation stats", "Tokens, speed and time to first token under replies", settings.showStats) { v ->
+      SwitchRow(stringResource(R.string.settings_show_stats), stringResource(R.string.settings_show_stats_sub), settings.showStats) { v ->
         onChange { it.copy(showStats = v) }
       }
-      SwitchRow("Keep screen on while generating", null, settings.keepScreenOn) { v ->
+      SwitchRow(stringResource(R.string.settings_keep_screen_on), null, settings.keepScreenOn) { v ->
         onChange { it.copy(keepScreenOn = v) }
       }
 
-      Section("Generation defaults")
+      Section(stringResource(R.string.settings_generation_defaults))
       GenerationControls(settings.generation) { g -> onChange { it.copy(generation = g) } }
 
-      Section("Models & memory")
-      SwitchRow("Load last model on launch", "Skipped automatically if the last load crashed", settings.autoLoadLastModel) { v ->
+      Section(stringResource(R.string.settings_models_memory))
+      SwitchRow(stringResource(R.string.settings_autoload), stringResource(R.string.settings_autoload_sub), settings.autoLoadLastModel) { v ->
         onChange { it.copy(autoLoadLastModel = v) }
       }
-      SliderRow("Unload after minutes in background (0 = never)", settings.unloadAfterMinutes.toFloat(), 0f..60f, 11, "%.0f") { v ->
+      SliderRow(stringResource(R.string.settings_unload_after), settings.unloadAfterMinutes.toFloat(), 0f..60f, 11, "%.0f") { v ->
         onChange { it.copy(unloadAfterMinutes = (v / 5).roundToInt() * 5) }
       }
       LoadControls(settings.load) { l -> onChange { it.copy(load = l) } }
@@ -157,7 +167,7 @@ fun SettingsScreen(
 
       Section("Data")
       Text(
-        "Chats stay on this device. Export them to keep a copy or move them to another phone.",
+        stringResource(R.string.settings_data_sub),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
@@ -165,21 +175,21 @@ fun SettingsScreen(
         OutlinedButton(onClick = { exportDialog = true }) {
           Icon(Icons.Outlined.FileDownload, null, Modifier.size(18.dp))
           Spacer(Modifier.size(8.dp))
-          Text("Export chats")
+          Text(stringResource(R.string.settings_export_chats))
         }
         OutlinedButton(onClick = onImport) {
           Icon(Icons.Outlined.FileUpload, null, Modifier.size(18.dp))
           Spacer(Modifier.size(8.dp))
-          Text("Import")
+          Text(stringResource(R.string.settings_import))
         }
       }
 
-      Section("Downloads")
+      Section(stringResource(R.string.settings_downloads))
       LocalTextField(
         initial = settings.hfToken,
         onValueChange = { v -> onChange { it.copy(hfToken = v.trim()) } },
-        label = { Text("Hugging Face token (optional)") },
-        supportingText = { Text("Needed for gated models. Stored encrypted on this device; only sent to huggingface.co.") },
+        label = { Text(stringResource(R.string.settings_hf_token)) },
+        supportingText = { Text(stringResource(R.string.settings_hf_token_sub)) },
         singleLine = true,
         visualTransformation = PasswordVisualTransformation(),
         modifier = Modifier.fillMaxWidth(),
@@ -195,13 +205,13 @@ fun SettingsScreen(
 @Composable
 fun GenerationControls(g: GenerationSettings, onChange: (GenerationSettings) -> Unit) {
   val d = GenerationSettings.DEFAULTS
-  SliderRow("Temperature", g.temperature ?: d.temperature!!, 0f..2f, 40, "%.2f") { onChange(g.copy(temperature = it)) }
-  SliderRow("Top-p", g.topP ?: d.topP!!, 0f..1f, 20, "%.2f") { onChange(g.copy(topP = it)) }
-  SliderRow("Min-p", g.minP ?: d.minP!!, 0f..0.5f, 50, "%.2f") { onChange(g.copy(minP = it)) }
-  SliderRow("Top-k", (g.topK ?: d.topK!!).toFloat(), 0f..100f, 99, "%.0f") { onChange(g.copy(topK = it.roundToInt())) }
-  SliderRow("Repeat penalty", g.repeatPenalty ?: d.repeatPenalty!!, 1f..1.5f, 50, "%.2f") { onChange(g.copy(repeatPenalty = it)) }
+  SliderRow(stringResource(R.string.gen_temperature), g.temperature ?: d.temperature!!, 0f..2f, 40, "%.2f") { onChange(g.copy(temperature = it)) }
+  SliderRow(stringResource(R.string.gen_top_p), g.topP ?: d.topP!!, 0f..1f, 20, "%.2f") { onChange(g.copy(topP = it)) }
+  SliderRow(stringResource(R.string.gen_min_p), g.minP ?: d.minP!!, 0f..0.5f, 50, "%.2f") { onChange(g.copy(minP = it)) }
+  SliderRow(stringResource(R.string.gen_top_k), (g.topK ?: d.topK!!).toFloat(), 0f..100f, 99, "%.0f") { onChange(g.copy(topK = it.roundToInt())) }
+  SliderRow(stringResource(R.string.gen_repeat_penalty), g.repeatPenalty ?: d.repeatPenalty!!, 1f..1.5f, 50, "%.2f") { onChange(g.copy(repeatPenalty = it)) }
   SliderRow(
-    "Max tokens (0 = unlimited)",
+    stringResource(R.string.gen_max_tokens),
     (g.maxTokens ?: d.maxTokens!!).coerceAtLeast(0).toFloat(),
     0f..4096f,
     31,
@@ -214,36 +224,47 @@ fun GenerationControls(g: GenerationSettings, onChange: (GenerationSettings) -> 
 
 @Composable
 private fun LoadControls(l: LoadSettings, onChange: (LoadSettings) -> Unit) {
-  SliderRow("Context size (tokens)", (l.nCtx ?: 4096).toFloat(), 512f..32768f, 62, "%.0f") {
+  SliderRow(stringResource(R.string.load_ctx), (l.nCtx ?: 4096).toFloat(), 512f..32768f, 62, "%.0f") {
     onChange(l.copy(nCtx = (it / 512).roundToInt().coerceAtLeast(1) * 512))
   }
-  SliderRow("CPU threads (0 = auto)", (l.nThreads ?: 0).toFloat(), 0f..8f, 7, "%.0f") {
+  SliderRow(stringResource(R.string.load_threads), (l.nThreads ?: 0).toFloat(), 0f..8f, 7, "%.0f") {
     onChange(l.copy(nThreads = it.roundToInt()))
   }
-  SwitchRow("Memory-map model file", "Faster loads; turn off on low-RAM phones if loads fail", l.useMmap ?: true) {
+  SwitchRow(stringResource(R.string.load_mmap), stringResource(R.string.load_mmap_sub), l.useMmap ?: true) {
     onChange(l.copy(useMmap = it))
   }
   Text(
-    "Load settings apply the next time a model is loaded.",
+    stringResource(R.string.load_apply_note),
     style = MaterialTheme.typography.bodySmall,
     color = MaterialTheme.colorScheme.onSurfaceVariant,
   )
 }
 
 /** "GPU acceleration (experimental)": off by default, only offered on Adreno + OpenCL phones. */
+/** GpuSupport's reasons are English data from the domain layer; shown in the user's language. */
+@Composable
+private fun gpuReason(reason: String): String =
+  when (reason) {
+    "Not checked" -> stringResource(R.string.gpu_reason_unknown)
+    "The GPU backend is only built for 64-bit ARM phones" -> stringResource(R.string.gpu_reason_abi)
+    "Needs a Snapdragon (Adreno) GPU" -> stringResource(R.string.gpu_reason_qualcomm)
+    "This phone has no OpenCL driver" -> stringResource(R.string.gpu_reason_opencl)
+    else -> reason
+  }
+
 @Composable
 fun GpuControls(settings: AppSettings, gpu: GpuSupport, onChange: ((AppSettings) -> AppSettings) -> Unit) {
   // Turning it off always works, even if the phone no longer qualifies.
   val canToggle = gpu.available || settings.gpuEnabled
+  val gpuTitle = stringResource(R.string.gpu_title)
   Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
     Column(Modifier.weight(1f)) {
-      Text("GPU acceleration (experimental)", style = MaterialTheme.typography.bodyLarge)
+      Text(stringResource(R.string.gpu_title), style = MaterialTheme.typography.bodyLarge)
       Text(
         if (gpu.available) {
-          "Runs layers on the Adreno GPU with OpenCL. Often faster at reading long prompts, not always " +
-            "at writing; if the GPU fails, the model loads on the CPU."
+          stringResource(R.string.gpu_on_sub)
         } else {
-          "Not available: ${gpu.reason}."
+          stringResource(R.string.gpu_unavailable, gpuReason(gpu.reason))
         },
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -253,18 +274,19 @@ fun GpuControls(settings: AppSettings, gpu: GpuSupport, onChange: ((AppSettings)
       checked = settings.gpuEnabled,
       onCheckedChange = { v -> onChange { it.copy(gpuEnabled = v) } },
       enabled = canToggle,
-      modifier = Modifier.semantics { contentDescription = "GPU acceleration (experimental)" },
+      modifier = Modifier.semantics { contentDescription = gpuTitle },
     )
   }
   if (settings.gpuEnabled) {
     // 99 covers every layer of any phone-sized model, so the top of the slider reads "All" (#28).
+    val all = stringResource(R.string.gpu_layers_all)
     SliderRow(
-      "Layers on the GPU",
+      stringResource(R.string.gpu_layers),
       settings.gpuLayers.coerceIn(1, 99).toFloat(),
       1f..99f,
       97,
       "%.0f",
-      valueText = { if (it.roundToInt() >= 99) "All" else it.roundToInt().toString() },
+      valueText = { if (it.roundToInt() >= 99) all else it.roundToInt().toString() },
     ) { v ->
       onChange { it.copy(gpuLayers = v.roundToInt()) }
     }
@@ -356,17 +378,17 @@ sealed interface TokenCheckState {
 @Composable
 private fun TokenTestRow(enabled: Boolean, state: TokenCheckState?, onTest: () -> Unit) {
   Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-    OutlinedButton(onClick = onTest, enabled = enabled && state != TokenCheckState.Checking) { Text("Test token") }
+    OutlinedButton(onClick = onTest, enabled = enabled && state != TokenCheckState.Checking) { Text(stringResource(R.string.token_test)) }
     Spacer(Modifier.size(12.dp))
     val (text, color, icon) =
       when (val s = state) {
         null -> Triple(null, MaterialTheme.colorScheme.onSurfaceVariant, null)
-        TokenCheckState.Checking -> Triple("Checking…", MaterialTheme.colorScheme.onSurfaceVariant, null)
+        TokenCheckState.Checking -> Triple(stringResource(R.string.token_checking), MaterialTheme.colorScheme.onSurfaceVariant, null)
         is TokenCheckState.Done ->
           when (val r = s.result) {
-            is TokenCheck.Valid -> Triple("Signed in as ${r.user}", MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
-            is TokenCheck.Rejected -> Triple("Hugging Face rejected this token", MaterialTheme.colorScheme.error, Icons.Outlined.ErrorOutline)
-            is TokenCheck.Unreachable -> Triple("Couldn't reach Hugging Face (${r.message})", MaterialTheme.colorScheme.error, Icons.Outlined.CloudOff)
+            is TokenCheck.Valid -> Triple(stringResource(R.string.token_valid, r.user), MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
+            is TokenCheck.Rejected -> Triple(stringResource(R.string.token_rejected), MaterialTheme.colorScheme.error, Icons.Outlined.ErrorOutline)
+            is TokenCheck.Unreachable -> Triple(stringResource(R.string.token_unreachable, r.message), MaterialTheme.colorScheme.error, Icons.Outlined.CloudOff)
           }
       }
     if (state == TokenCheckState.Checking) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)

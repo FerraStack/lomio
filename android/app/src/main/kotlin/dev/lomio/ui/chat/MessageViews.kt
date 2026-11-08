@@ -80,6 +80,8 @@ import dev.lomio.domain.UiMessage
 import dev.lomio.llama.GenerationStats
 import dev.lomio.llama.StopReason
 import java.util.Locale
+import androidx.compose.ui.res.stringResource
+import dev.lomio.R
 
 /** What a message can do; lambdas are no-ops by default (screenshots, previews). */
 class MessageActions(
@@ -107,12 +109,12 @@ fun UserMessage(message: UiMessage, actions: MessageActions, modifier: Modifier 
           message.images.forEachIndexed { i, path ->
             AttachmentImage(
               path,
-              contentDescription = "Attached image ${i + 1}",
+              contentDescription = stringResource(R.string.message_attached_image, i + 1),
               modifier =
                 Modifier.widthIn(max = minOf(bubbleMaxWidth, 240.dp))
                   .heightIn(max = 240.dp)
                   .clip(RoundedCornerShape(16.dp))
-                  .combinedClickable(onClick = {}, onLongClick = { menu = true }, onLongClickLabel = "Message options"),
+                  .combinedClickable(onClick = {}, onLongClick = { menu = true }, onLongClickLabel = stringResource(R.string.message_options)),
             )
           }
           if (message.content.isNotEmpty() || message.images.isEmpty()) {
@@ -125,7 +127,7 @@ fun UserMessage(message: UiMessage, actions: MessageActions, modifier: Modifier 
                   .combinedClickable(
                     onClick = {},
                     onLongClick = { menu = true },
-                    onLongClickLabel = "Message options",
+                    onLongClickLabel = stringResource(R.string.message_options),
                   ),
             ) {
               Text(
@@ -137,10 +139,10 @@ fun UserMessage(message: UiMessage, actions: MessageActions, modifier: Modifier 
           }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-          MenuItem("Edit", Icons.Outlined.Edit) { menu = false; actions.onEdit() }
-          MenuItem("Copy", Icons.Outlined.ContentCopy) { menu = false; actions.onCopy() }
-          MenuItem("Share", Icons.Outlined.Share) { menu = false; actions.onShare() }
-          MenuItem("Delete", Icons.Outlined.Delete, destructive = true) { menu = false; actions.onDelete() }
+          MenuItem(stringResource(R.string.action_edit), Icons.Outlined.Edit) { menu = false; actions.onEdit() }
+          MenuItem(stringResource(R.string.action_copy), Icons.Outlined.ContentCopy) { menu = false; actions.onCopy() }
+          MenuItem(stringResource(R.string.action_share), Icons.Outlined.Share) { menu = false; actions.onShare() }
+          MenuItem(stringResource(R.string.action_delete), Icons.Outlined.Delete, destructive = true) { menu = false; actions.onDelete() }
         }
       }
       if (message.versionCount > 1) {
@@ -168,11 +170,11 @@ fun AssistantMessage(
       if (progress != null && progress < 1f) PromptProgress(progress) else TypingIndicator()
     }
     when (message.status) {
-      MessageStatus.STOPPED -> StatusNote("Stopped")
-      MessageStatus.ERROR -> StatusNote("Generation failed")
+      MessageStatus.STOPPED -> StatusNote(stringResource(R.string.message_stopped))
+      MessageStatus.ERROR -> StatusNote(stringResource(R.string.message_failed))
       else ->
         if (message.stats?.stopReason == StopReason.CONTEXT_FULL) {
-          StatusNote("Cut off — context full. Start a new chat or increase the context size.")
+          StatusNote(stringResource(R.string.message_context_full))
         }
     }
     if (!streaming) {
@@ -181,13 +183,13 @@ fun AssistantMessage(
         if (message.versionCount > 1) {
           VersionSwitcher(message.versionIndex, message.versionCount, actions.onStepVersion)
         }
-        FooterButton(Icons.Outlined.ContentCopy, "Copy", actions.onCopy)
-        actions.onRegenerate?.let { FooterButton(Icons.Outlined.Refresh, "Regenerate", it) }
-        FooterButton(Icons.Outlined.Share, "Share", actions.onShare)
+        FooterButton(Icons.Outlined.ContentCopy, stringResource(R.string.action_copy), actions.onCopy)
+        actions.onRegenerate?.let { FooterButton(Icons.Outlined.Refresh, stringResource(R.string.message_regenerate), it) }
+        FooterButton(Icons.Outlined.Share, stringResource(R.string.action_share), actions.onShare)
         Box {
-          FooterButton(Icons.Outlined.MoreHoriz, "More actions") { more = true }
+          FooterButton(Icons.Outlined.MoreHoriz, stringResource(R.string.message_more_actions)) { more = true }
           DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
-            MenuItem("Delete", Icons.Outlined.Delete, destructive = true) { more = false; actions.onDelete() }
+            MenuItem(stringResource(R.string.action_delete), Icons.Outlined.Delete, destructive = true) { more = false; actions.onDelete() }
           }
         }
         if (showStats) message.stats?.let { StatsLine(it, Modifier.weight(1f, fill = false)) }
@@ -230,20 +232,21 @@ fun VersionSwitcher(index: Int, count: Int, onStep: ((Int) -> Unit)?) {
       enabled = onStep != null && index > 0,
       modifier = Modifier.size(32.dp),
     ) {
-      Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, "Previous version", Modifier.size(18.dp))
+      Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, stringResource(R.string.message_previous_version), Modifier.size(18.dp))
     }
+    val versionDescription = stringResource(R.string.message_version_of, index + 1, count)
     Text(
       "${index + 1}/$count",
       style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
       color = MaterialTheme.colorScheme.onSurfaceVariant,
-      modifier = Modifier.semantics { contentDescription = "Version ${index + 1} of $count" },
+      modifier = Modifier.semantics { contentDescription = versionDescription },
     )
     IconButton(
       onClick = { onStep?.invoke(+1) },
       enabled = onStep != null && index < count - 1,
       modifier = Modifier.size(32.dp),
     ) {
-      Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, "Next version", Modifier.size(18.dp))
+      Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, stringResource(R.string.message_next_version), Modifier.size(18.dp))
     }
   }
 }
@@ -342,6 +345,7 @@ private fun lomioMarkdownComponents(palette: CodePalette) =
 private fun ReasoningBlock(text: String, streaming: Boolean) {
   // Expanded while streaming, collapsed when done (PocketPal's ReasoningBlock).
   var expanded by rememberSaveable(streaming) { mutableStateOf(streaming) }
+  val toggleDescription = stringResource(if (expanded) R.string.message_hide_reasoning else R.string.message_show_reasoning)
   Surface(
     color = MaterialTheme.colorScheme.surfaceContainer,
     shape = RoundedCornerShape(12.dp),
@@ -353,12 +357,12 @@ private fun ReasoningBlock(text: String, streaming: Boolean) {
         modifier =
           Modifier.fillMaxWidth()
             .clickable { expanded = !expanded }
-            .semantics { contentDescription = if (expanded) "Hide reasoning" else "Show reasoning" },
+            .semantics { contentDescription = toggleDescription },
       ) {
         Icon(Icons.Outlined.Lightbulb, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.size(8.dp))
         Text(
-          if (streaming) "Thinking…" else "Thought process",
+          stringResource(if (streaming) R.string.message_thinking else R.string.message_thought_process),
           style = MaterialTheme.typography.labelLarge,
           modifier = Modifier.weight(1f),
         )
@@ -380,12 +384,13 @@ private fun ReasoningBlock(text: String, streaming: Boolean) {
 @Composable
 private fun PromptProgress(progress: Float) {
   val percent = (progress * 100).toInt()
+  val description = stringResource(R.string.message_reading_a11y, percent)
   Row(
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(12.dp),
     modifier =
       Modifier.padding(vertical = 8.dp).semantics(mergeDescendants = true) {
-        contentDescription = "Reading your message, $percent percent"
+        contentDescription = description
       },
   ) {
     LinearProgressIndicator(
@@ -393,7 +398,7 @@ private fun PromptProgress(progress: Float) {
       modifier = Modifier.width(96.dp).clip(RoundedCornerShape(50)),
     )
     Text(
-      "Reading your message · $percent%",
+      stringResource(R.string.message_reading, percent),
       style = MaterialTheme.typography.labelMedium,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -462,12 +467,12 @@ fun SummaryNote(message: UiMessage, modifier: Modifier = Modifier) {
         Icon(Icons.Outlined.Summarize, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.size(8.dp))
         Text(
-          if (streaming) "Summarizing the conversation…" else "Conversation summarized",
+          stringResource(if (streaming) R.string.summary_running else R.string.summary_done),
           style = MaterialTheme.typography.labelLarge,
           color = MaterialTheme.colorScheme.primary,
           modifier = Modifier.weight(1f),
         )
-        if (!streaming) Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) "Collapse" else "Expand")
+        if (!streaming) Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, stringResource(if (expanded) R.string.action_collapse else R.string.action_expand))
       }
       when {
         message.content.isNotEmpty() ->
@@ -481,9 +486,9 @@ fun SummaryNote(message: UiMessage, modifier: Modifier = Modifier) {
       }
       Text(
         when (message.status) {
-          MessageStatus.ERROR -> "The summary failed; the model still sees the full chat."
-          MessageStatus.STOPPED -> "Stopped; the model still sees the full chat."
-          else -> "The model now sees this summary instead of the messages above."
+          MessageStatus.ERROR -> stringResource(R.string.summary_failed)
+          MessageStatus.STOPPED -> stringResource(R.string.summary_stopped)
+          else -> stringResource(R.string.summary_note)
         },
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,

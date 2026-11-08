@@ -73,6 +73,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.lomio.domain.Storage
 import dev.lomio.ui.components.Format
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
+import dev.lomio.R
 
 /** One model on the Storage screen. */
 data class StorageModelRow(
@@ -165,8 +168,8 @@ fun StorageScreen(state: StorageUiState, actions: StorageActions, modifier: Modi
     topBar = {
       Column {
         TopAppBar(
-          title = { Text("Storage") },
-          navigationIcon = { IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") } },
+          title = { Text(stringResource(R.string.storage_title)) },
+          navigationIcon = { IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.action_back)) } },
         )
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth()) else Spacer(Modifier.height(4.dp))
       }
@@ -174,7 +177,8 @@ fun StorageScreen(state: StorageUiState, actions: StorageActions, modifier: Modi
   ) { padding ->
     if (state.loading) {
       Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(Modifier.semantics { contentDescription = "Measuring storage" })
+        val measuring = stringResource(R.string.storage_measuring)
+        CircularProgressIndicator(Modifier.semantics { contentDescription = measuring })
       }
     } else Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
       LazyColumn(
@@ -186,7 +190,7 @@ fun StorageScreen(state: StorageUiState, actions: StorageActions, modifier: Modi
         if (state.unused.isNotEmpty()) {
           item(key = "unused") { UnusedCard(state.unused, enabled = !state.busy) { reviewUnused = true } }
         }
-        item(key = "models-title") { SectionTitle("Models") }
+        item(key = "models-title") { SectionTitle(stringResource(R.string.storage_models)) }
         if (state.models.isEmpty()) {
           item(key = "models-empty") { EmptyModels() }
         } else {
@@ -200,12 +204,11 @@ fun StorageScreen(state: StorageUiState, actions: StorageActions, modifier: Modi
             }
           }
         }
-        item(key = "other-title") { SectionTitle("Other") }
+        item(key = "other-title") { SectionTitle(stringResource(R.string.storage_other)) }
         item(key = "other") { OtherGroup(state, actions) }
         item(key = "footer") {
           Text(
-            "Models are kept in Lomio's private storage and are never included in backups. " +
-              "Uninstalling Lomio removes them.",
+            stringResource(R.string.storage_footer),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
@@ -221,25 +224,30 @@ private fun Summary(state: StorageUiState) {
   val others = (state.volumeBytes - state.freeBytes - state.lomioBytes).coerceAtLeast(0)
   val segments =
     listOf(
-      Segment("Models", state.modelsBytes, MaterialTheme.colorScheme.primary),
-      Segment("Chats and other files", state.otherBytes, MaterialTheme.colorScheme.tertiary),
-      Segment("Other apps and system", others, MaterialTheme.colorScheme.outline),
-      Segment("Free", state.freeBytes, MaterialTheme.colorScheme.surfaceContainerHighest),
+      Segment(stringResource(R.string.storage_seg_models), state.modelsBytes, MaterialTheme.colorScheme.primary),
+      Segment(stringResource(R.string.storage_seg_other), state.otherBytes, MaterialTheme.colorScheme.tertiary),
+      Segment(stringResource(R.string.storage_seg_system), others, MaterialTheme.colorScheme.outline),
+      Segment(stringResource(R.string.storage_seg_free), state.freeBytes, MaterialTheme.colorScheme.surfaceContainerHighest),
     )
   val description =
-    "Lomio uses ${Format.bytes(state.lomioBytes)}, of which models ${Format.bytes(state.modelsBytes)}. " +
-      "${Format.bytes(state.freeBytes)} free of ${Format.bytes(state.volumeBytes)}."
+    stringResource(
+      R.string.storage_a11y_summary,
+      Format.bytes(state.lomioBytes),
+      Format.bytes(state.modelsBytes),
+      Format.bytes(state.freeBytes),
+      Format.bytes(state.volumeBytes),
+    )
   Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
     Column(Modifier.padding(20.dp)) {
       Column(Modifier.semantics(mergeDescendants = true) { contentDescription = description }) {
-        Text("Lomio uses", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.storage_lomio_uses), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
           Format.bytes(state.lomioBytes),
           style = MaterialTheme.typography.displaySmall.copy(fontFeatureSettings = TABULAR),
           modifier = Modifier.padding(top = 2.dp),
         )
         Text(
-          "${Format.bytes(state.freeBytes)} free of ${Format.bytes(state.volumeBytes)}",
+          stringResource(R.string.storage_free_of, Format.bytes(state.freeBytes), Format.bytes(state.volumeBytes)),
           style = MaterialTheme.typography.bodyMedium,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -250,7 +258,7 @@ private fun Summary(state: StorageUiState) {
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(top = 12.dp)) {
           Icon(Icons.Outlined.WarningAmber, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
           Text(
-            "Storage is almost full. A download needs room for the whole model file.",
+            stringResource(R.string.storage_low),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
             modifier = Modifier.padding(start = 8.dp),
@@ -294,10 +302,9 @@ private fun UnusedCard(unused: List<StorageModelRow>, enabled: Boolean, onReview
     Row(Modifier.padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
       Icon(Icons.Outlined.CleaningServices, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onTertiaryContainer)
       Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
-        Text("Free up ${Format.bytes(bytes)}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
+        Text(stringResource(R.string.storage_free_up, Format.bytes(bytes)), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
         Text(
-          if (unused.size == 1) "1 model hasn't been used in ${Storage.UNUSED_AFTER_DAYS} days."
-          else "${unused.size} models haven't been used in ${Storage.UNUSED_AFTER_DAYS} days.",
+          pluralStringResource(R.plurals.storage_unused_body, unused.size, unused.size, Storage.UNUSED_AFTER_DAYS),
           style = MaterialTheme.typography.bodyMedium,
           color = MaterialTheme.colorScheme.onTertiaryContainer,
         )
@@ -307,7 +314,7 @@ private fun UnusedCard(unused: List<StorageModelRow>, enabled: Boolean, onReview
         enabled = enabled,
         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary, contentColor = MaterialTheme.colorScheme.onTertiary),
       ) {
-        Text("Review")
+        Text(stringResource(R.string.storage_review))
       }
     }
   }
@@ -334,9 +341,9 @@ private fun Group(content: @Composable () -> Unit) {
 private fun ModelRow(m: StorageModelRow, share: Float, enabled: Boolean, onDelete: () -> Unit) {
   val detail =
     when {
-      m.missing -> "File missing"
-      m.partial -> "Unfinished download"
-      else -> listOfNotNull(m.quant, Storage.lastUsedLabel(m.lastUsed)).joinToString(" · ")
+      m.missing -> stringResource(R.string.storage_file_missing)
+      m.partial -> stringResource(R.string.storage_unfinished)
+      else -> listOfNotNull(m.quant, lastUsedLabel(m.lastUsed)).joinToString(" · ")
     }
   Row(
     verticalAlignment = Alignment.CenterVertically,
@@ -345,7 +352,7 @@ private fun ModelRow(m: StorageModelRow, share: Float, enabled: Boolean, onDelet
     Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}) {
       Row(verticalAlignment = Alignment.CenterVertically) {
         Text(m.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-        if (m.loaded) Badge("In use")
+        if (m.loaded) Badge(stringResource(R.string.storage_in_use))
       }
       Text(
         detail,
@@ -366,9 +373,21 @@ private fun ModelRow(m: StorageModelRow, share: Float, enabled: Boolean, onDelet
         )
       }
     }
-    IconButton(onClick = onDelete, enabled = enabled) { Icon(Icons.Outlined.Delete, "Delete ${m.name}") }
+    IconButton(onClick = onDelete, enabled = enabled) { Icon(Icons.Outlined.Delete, stringResource(R.string.models_delete_named, m.name)) }
   }
 }
+
+/** "Used 3 days ago" etc., with the right plural forms. */
+@Composable
+fun lastUsedLabel(l: Storage.LastUsed): String =
+  when (l) {
+    Storage.LastUsed.Never -> stringResource(R.string.last_used_never)
+    Storage.LastUsed.Today -> stringResource(R.string.last_used_today)
+    Storage.LastUsed.Yesterday -> stringResource(R.string.last_used_yesterday)
+    is Storage.LastUsed.DaysAgo -> pluralStringResource(R.plurals.last_used_days, l.days, l.days)
+    is Storage.LastUsed.WeeksAgo -> pluralStringResource(R.plurals.last_used_weeks, l.weeks, l.weeks)
+    is Storage.LastUsed.MonthsAgo -> pluralStringResource(R.plurals.last_used_months, l.months, l.months)
+  }
 
 @Composable
 private fun Badge(text: String) {
@@ -390,9 +409,9 @@ private fun EmptyModels() {
   Group {
     Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
       Icon(Icons.Outlined.Inventory2, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-      Text("No models yet", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+      Text(stringResource(R.string.storage_empty_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
       Text(
-        "Models you download or import show up here with their size.",
+        stringResource(R.string.storage_empty_body),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
@@ -405,21 +424,20 @@ private fun EmptyModels() {
 @Composable
 private fun OtherGroup(state: StorageUiState, actions: StorageActions) {
   Group {
-    OtherRow(Icons.AutoMirrored.Outlined.Chat, "Chat history", "Your conversations and their search index", state.chatsBytes)
+    OtherRow(Icons.AutoMirrored.Outlined.Chat, stringResource(R.string.storage_chats), stringResource(R.string.storage_chats_sub), state.chatsBytes)
     HorizontalDivider(Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant)
-    OtherRow(Icons.Outlined.Cached, "Temporary files", "Safe to clear at any time", state.cacheBytes) {
-      TextButton(onClick = actions.onClearCache, enabled = state.cacheBytes > 0 && !state.busy) { Text("Clear") }
+    OtherRow(Icons.Outlined.Cached, stringResource(R.string.storage_temp), stringResource(R.string.storage_temp_sub), state.cacheBytes) {
+      TextButton(onClick = actions.onClearCache, enabled = state.cacheBytes > 0 && !state.busy) { Text(stringResource(R.string.action_clear)) }
     }
     if (state.leftoverCount > 0) {
       HorizontalDivider(Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant)
       OtherRow(
         Icons.Outlined.FolderOff,
-        "Leftover files",
-        if (state.leftoverCount == 1) "1 file from an unfinished download or import"
-        else "${state.leftoverCount} files from unfinished downloads or imports",
+        stringResource(R.string.storage_leftovers),
+        pluralStringResource(R.plurals.storage_leftovers_sub, state.leftoverCount, state.leftoverCount),
         state.leftoverBytes,
       ) {
-        TextButton(onClick = actions.onRemoveLeftovers, enabled = !state.busy) { Text("Remove") }
+        TextButton(onClick = actions.onRemoveLeftovers, enabled = !state.busy) { Text(stringResource(R.string.action_remove)) }
       }
     }
   }
@@ -450,20 +468,21 @@ private fun DeleteDialog(m: StorageModelRow, onConfirm: () -> Unit, onDismiss: (
   AlertDialog(
     onDismissRequest = onDismiss,
     icon = { Icon(Icons.Outlined.Delete, null) },
-    title = { Text(if (m.partial) "Cancel and delete ${m.name}?" else "Delete ${m.name}?") },
+    title = { Text(stringResource(if (m.partial) R.string.storage_cancel_delete_title else R.string.storage_delete_title, m.name)) },
     text = {
       Text(
-        buildString {
-          append("This frees ${Format.bytes(m.bytes)}.")
-          if (m.loaded) append(" The model will be unloaded first.")
-          append(" Your chats stay; you can download the model again from Models.")
-        }
+        listOfNotNull(
+            stringResource(R.string.storage_delete_frees, Format.bytes(m.bytes)),
+            if (m.loaded) stringResource(R.string.storage_delete_unloaded) else null,
+            stringResource(R.string.storage_delete_keep_chats),
+          )
+          .joinToString(" ")
       )
     },
     confirmButton = {
-      TextButton(onClick = onConfirm, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Delete") }
+      TextButton(onClick = onConfirm, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.action_delete)) }
     },
-    dismissButton = { TextButton(onClick = onDismiss) { Text("Keep") } },
+    dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.storage_keep)) } },
   )
 }
 
@@ -474,10 +493,10 @@ private fun UnusedDialog(unused: List<StorageModelRow>, onConfirm: (List<String>
   AlertDialog(
     onDismissRequest = onDismiss,
     icon = { Icon(Icons.Outlined.CleaningServices, null) },
-    title = { Text("Delete unused models") },
+    title = { Text(stringResource(R.string.storage_unused_title)) },
     text = {
       Column(Modifier.verticalScroll(rememberScrollState())) {
-        Text("Not loaded in the last ${Storage.UNUSED_AFTER_DAYS} days. Your chats stay.", style = MaterialTheme.typography.bodyMedium)
+        Text(pluralStringResource(R.plurals.storage_unused_dialog_body, Storage.UNUSED_AFTER_DAYS, Storage.UNUSED_AFTER_DAYS), style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(8.dp))
         unused.forEach { m ->
           val checked = m.id in picked
@@ -492,7 +511,7 @@ private fun UnusedDialog(unused: List<StorageModelRow>, onConfirm: (List<String>
             Checkbox(checked = checked, onCheckedChange = null, modifier = Modifier.padding(horizontal = 8.dp))
             Column(Modifier.weight(1f)) {
               Text(m.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-              Text(Storage.lastUsedLabel(m.lastUsed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+              Text(lastUsedLabel(m.lastUsed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
               Format.bytes(m.bytes),
@@ -509,9 +528,9 @@ private fun UnusedDialog(unused: List<StorageModelRow>, onConfirm: (List<String>
         enabled = picked.isNotEmpty(),
         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
       ) {
-        Text(if (picked.isEmpty()) "Delete" else "Delete · ${Format.bytes(bytes)}")
+        Text(if (picked.isEmpty()) stringResource(R.string.action_delete) else stringResource(R.string.storage_delete_frees_btn, Format.bytes(bytes)))
       }
     },
-    dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
   )
 }

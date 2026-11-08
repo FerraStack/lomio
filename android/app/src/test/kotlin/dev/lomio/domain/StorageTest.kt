@@ -54,12 +54,4 @@ class StorageTest {
     // A clock that went backwards is "today", not negative.
     assertEquals(LastUsed.Today, Storage.lastUsed(now + DAY_MS, now))
   }
-
-  @Test
-  fun lastUsedLabelsReadNaturally() {
-    assertEquals("Used last week", Storage.lastUsedLabel(LastUsed.WeeksAgo(1)))
-    assertEquals("Used 3 weeks ago", Storage.lastUsedLabel(LastUsed.WeeksAgo(3)))
-    assertEquals("Used a month ago", Storage.lastUsedLabel(LastUsed.MonthsAgo(1)))
-    assertEquals("Never loaded", Storage.lastUsedLabel(LastUsed.Never))
-  }
 }

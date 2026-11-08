@@ -26,6 +26,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import dev.lomio.R
+import dev.lomio.data.download.InsufficientStorageException
+import dev.lomio.ui.components.Format
 
 /**
  * Our own small starter list (RESEARCH.md §2.2: PocketPal's device-rules repo has no license).
@@ -73,7 +76,7 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
               ModelCardState(
                 id = m.id,
                 name = m.displayName,
-                subtitle = if (m.source == ModelSource.HF) m.hfRepo.orEmpty() else "Imported file",
+                subtitle = if (m.source == ModelSource.HF) m.hfRepo.orEmpty() else c.text.getString(R.string.models_imported_file),
                 quant = m.quant,
                 sizeBytes = m.downloadBytes,
                 vision = m.hasVision,
@@ -116,7 +119,7 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
   fun load(id: String) =
     viewModelScope.launch {
       when (val r = c.modelManager.load(id)) {
-        is LoadOutcome.Loaded -> message.value = "Loaded ${r.info.description}"
+        is LoadOutcome.Loaded -> message.value = c.text.getString(R.string.models_loaded_msg, r.info.description)
         is LoadOutcome.Failed -> message.value = r.message
         is LoadOutcome.NeedsConfirmation -> Unit // app-wide confirmation dialog
       }
@@ -136,10 +139,10 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
 
   fun import(uri: Uri) =
     viewModelScope.launch {
-      message.value = "Importing…"
+      message.value = c.text.getString(R.string.models_importing)
       message.value =
         runCatching { c.models.importLocal(uri) }
-          .fold({ "Imported ${it.displayName}" }, { "Import failed: ${it.message}" })
+          .fold({ c.text.getString(R.string.models_imported_msg, it.displayName) }, { c.text.getString(R.string.models_import_failed, it.message.orEmpty()) })
     }
 
   fun messageShown() {
@@ -175,7 +178,7 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
         val s = _hf.value
         runCatching { c.hfClient.search(s.query, s.sort) }
           .onSuccess { r -> _hf.update { it.copy(loading = false, results = r) } }
-          .onFailure { e -> _hf.update { it.copy(loading = false, error = e.message ?: "Search failed") } }
+          .onFailure { e -> _hf.update { it.copy(loading = false, error = e.message ?: c.text.getString(R.string.hf_search_failed)) } }
       }
   }
 
@@ -204,7 +207,7 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
             )
           }
         }
-        .onFailure { e -> _hf.update { it.copy(filesLoading = false, error = e.message ?: "Failed to list files") } }
+        .onFailure { e -> _hf.update { it.copy(filesLoading = false, error = e.message ?: c.text.getString(R.string.hf_list_failed)) } }
     }
   }
 
@@ -224,9 +227,13 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
       runCatching { c.models.download(file, projector) }
         .onSuccess {
           _hf.update { s -> s.copy(files = s.files.map { if (it.file == file) it.copy(alreadyAdded = true) else it }) }
-          message.value = "Downloading ${file.fileName}"
+          message.value = c.text.getString(R.string.models_downloading_msg, file.fileName)
         }
-        .onFailure { message.value = it.message ?: "Download failed" }
+        .onFailure { e ->
+          message.value =
+            if (e is InsufficientStorageException) c.text.getString(R.string.err_no_space, Format.bytes(e.needed), Format.bytes(e.free))
+            else e.message ?: c.text.getString(R.string.models_download_failed)
+        }
     }
 
   companion object {

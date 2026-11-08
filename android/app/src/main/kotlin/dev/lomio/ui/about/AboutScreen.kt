@@ -16,6 +16,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import dev.lomio.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -24,16 +26,16 @@ fun AboutScreen(versionName: String, onOpenDrawer: () -> Unit, modifier: Modifie
     modifier = modifier,
     topBar = {
       TopAppBar(
-        title = { Text("About") },
-        navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Outlined.Menu, "Open menu") } },
+        title = { Text(stringResource(R.string.nav_about)) },
+        navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Outlined.Menu, stringResource(R.string.action_open_menu)) } },
       )
     },
   ) { padding ->
     Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      Text("Lomio $versionName", style = MaterialTheme.typography.headlineSmall)
-      Text("Chat with local language models. Everything runs on your phone: no account, no analytics, no cloud.")
-      Text("Inference: llama.cpp v0.9.0 (MIT). App: Apache-2.0.", style = MaterialTheme.typography.bodyMedium)
-      Text("Source and issues: github.com/FerraStack/lomio", style = MaterialTheme.typography.bodyMedium)
+      Text(stringResource(R.string.about_version, versionName), style = MaterialTheme.typography.headlineSmall)
+      Text(stringResource(R.string.about_tagline))
+      Text(stringResource(R.string.about_licenses), style = MaterialTheme.typography.bodyMedium)
+      Text(stringResource(R.string.about_source), style = MaterialTheme.typography.bodyMedium)
     }
   }
 }

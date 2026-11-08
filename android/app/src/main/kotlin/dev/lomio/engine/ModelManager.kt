@@ -67,6 +67,7 @@ class ModelManager(
   private val settings: SettingsRepository,
   private val crashGuard: CrashGuard,
   private val memory: DeviceMemoryProvider,
+  private val messages: EngineText = EngineText(),
 ) {
   private val mutex = Mutex()
   private val _activeModelId = MutableStateFlow<String?>(null)
@@ -119,10 +120,10 @@ class ModelManager(
   /** @param force skip the memory confirmation (the user already accepted it). */
   suspend fun load(modelId: String, force: Boolean = false): LoadOutcome =
     mutex.withLock {
-      val model = models.get(modelId) ?: return LoadOutcome.Failed("Model not found")
+      val model = models.get(modelId) ?: return LoadOutcome.Failed(messages.modelNotFound)
       val path = model.filePath
       if (model.state != ModelState.READY || path == null || !File(path).exists()) {
-        return LoadOutcome.Failed("${model.displayName} is not downloaded")
+        return LoadOutcome.Failed(messages.notDownloaded(model.displayName))
       }
       val load = loadSettingsFor(modelId)
       val (fit, estimate, mem) = fit(model, load.toLoadParams().nCtx)
@@ -157,7 +158,7 @@ class ModelManager(
         // Includes UnsatisfiedLinkError if the native library is missing for this ABI.
         _activeModelId.value = null
         activeLoad = null
-        LoadOutcome.Failed(e.message ?: "Failed to load model")
+        LoadOutcome.Failed(e.message ?: messages.loadFailed)
       } finally {
         // Reached only if the process survived the load including its warm-up decode.
         crashGuard.endLoad()
@@ -194,7 +195,7 @@ class ModelManager(
     if (!crashedOnGpu) return
     crashedOnGpu = false
     settings.update { it.copy(gpuEnabled = false) }
-    _gpuNotice.value = "The app closed while loading a model on the GPU, so GPU acceleration was turned off."
+    _gpuNotice.value = messages.gpuCrashNotice
   }
 
   fun dismissGpuNotice() {

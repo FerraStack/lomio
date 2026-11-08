@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import dev.lomio.R
 
 class SettingsViewModel(private val c: AppContainer) : ViewModel() {
   /** Null until DataStore has been read once. */
@@ -98,6 +99,6 @@ class BenchViewModel(private val c: AppContainer) : ViewModel() {
       local.update { it.copy(running = true, error = null) }
       runCatching { c.engine.bench(p.pp, p.tg, p.reps) }
         .onSuccess { r -> local.update { it.copy(running = false, result = r) } }
-        .onFailure { e -> local.update { it.copy(running = false, error = e.message ?: "Benchmark failed") } }
+        .onFailure { e -> local.update { it.copy(running = false, error = e.message ?: c.text.getString(R.string.bench_failed)) } }
     }
 }

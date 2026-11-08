@@ -44,6 +44,8 @@ import dev.lomio.data.hf.HfModel
 import dev.lomio.data.hf.HfSort
 import dev.lomio.domain.Fit
 import dev.lomio.ui.components.Format
+import androidx.compose.ui.res.stringResource
+import dev.lomio.R
 
 /** @param vision the repo has a vision projector, which downloads together with this file. */
 data class HfFileRow(val file: HfFile, val fit: Fit?, val alreadyAdded: Boolean, val vision: Boolean = false)
@@ -78,8 +80,8 @@ fun HfSearchScreen(state: HfUiState, actions: HfActions, modifier: Modifier = Mo
     modifier = modifier,
     topBar = {
       TopAppBar(
-        title = { Text(state.repo ?: "Hugging Face", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        navigationIcon = { IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") } },
+        title = { Text(state.repo ?: stringResource(R.string.hf_title), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        navigationIcon = { IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.action_back)) } },
       )
     },
   ) { padding ->
@@ -94,7 +96,7 @@ private fun SearchPane(state: HfUiState, actions: HfActions) {
   OutlinedTextField(
     value = state.query,
     onValueChange = actions.onQuery,
-    placeholder = { Text("Search GGUF models") },
+    placeholder = { Text(stringResource(R.string.hf_search_hint)) },
     leadingIcon = { Icon(Icons.Outlined.Search, null) },
     singleLine = true,
     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -104,7 +106,7 @@ private fun SearchPane(state: HfUiState, actions: HfActions) {
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     HfSort.entries.forEach { s ->
-      FilterChip(selected = s == state.sort, onClick = { actions.onSort(s) }, label = { Text(s.label) })
+      FilterChip(selected = s == state.sort, onClick = { actions.onSort(s) }, label = { Text(stringResource(s.labelRes())) })
     }
   }
   when {
@@ -116,7 +118,7 @@ private fun SearchPane(state: HfUiState, actions: HfActions) {
           Column(Modifier.fillMaxWidth().clickable { actions.onOpenRepo(m.id) }.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
               Text(m.id.substringAfter('/'), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-              if (m.gated) Icon(Icons.Outlined.Lock, "Gated", Modifier.size(16.dp))
+              if (m.gated) Icon(Icons.Outlined.Lock, stringResource(R.string.hf_gated), Modifier.size(16.dp))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
               Text(m.author, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -141,20 +143,20 @@ private fun RepoPane(state: HfUiState, actions: HfActions) {
   LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
     item {
       Text(
-        "Available GGUF files",
+        stringResource(R.string.hf_files_title),
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(16.dp),
       )
     }
-    if (state.files.isEmpty()) item { Text("No GGUF files in this repo.", Modifier.padding(16.dp)) }
+    if (state.files.isEmpty()) item { Text(stringResource(R.string.hf_no_files), Modifier.padding(16.dp)) }
     state.projector?.let { p ->
       item {
         Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
           Icon(Icons.Outlined.Image, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
           Spacer(Modifier.size(8.dp))
           Text(
-            "Vision model: the image projector (${Format.bytes(p.sizeBytes)}) downloads with the file you pick.",
+            stringResource(R.string.hf_vision_note, Format.bytes(p.sizeBytes)),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
@@ -183,10 +185,10 @@ private fun RepoPane(state: HfUiState, actions: HfActions) {
             listOfNotNull(
               Format.bytes(f.sizeBytes),
               when {
-                f.splitPart != null -> "Split file (not supported yet)"
-                row.fit == Fit.FITS -> "Fits"
-                row.fit == Fit.TIGHT -> "Tight"
-                row.fit == Fit.WONT_FIT -> "Won't fit"
+                f.splitPart != null -> stringResource(R.string.hf_split)
+                row.fit == Fit.FITS -> stringResource(R.string.hf_fits)
+                row.fit == Fit.TIGHT -> stringResource(R.string.hf_tight)
+                row.fit == Fit.WONT_FIT -> stringResource(R.string.hf_wont_fit)
                 else -> null
               },
             )
@@ -194,13 +196,21 @@ private fun RepoPane(state: HfUiState, actions: HfActions) {
         }
         val supported = f.splitPart == null
         FilledTonalButton(onClick = { actions.onDownload(f) }, enabled = supported && !row.alreadyAdded) {
-          Text(if (row.alreadyAdded) "Added" else "Download")
+          Text(stringResource(if (row.alreadyAdded) R.string.state_added else R.string.action_download))
         }
       }
       HorizontalDivider()
     }
   }
 }
+
+private fun HfSort.labelRes(): Int =
+  when (this) {
+    HfSort.TRENDING -> R.string.hf_sort_trending
+    HfSort.DOWNLOADS -> R.string.hf_sort_downloads
+    HfSort.LIKES -> R.string.hf_sort_likes
+    HfSort.UPDATED -> R.string.hf_sort_updated
+  }
 
 @Composable
 private fun Centered(content: @Composable () -> Unit) {

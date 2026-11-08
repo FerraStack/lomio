@@ -57,13 +57,18 @@ import androidx.compose.ui.unit.dp
 import dev.lomio.data.db.ConversationSummary
 import dev.lomio.domain.HistoryBucket
 import dev.lomio.ui.chat.TextInputDialog
+import androidx.compose.ui.res.stringResource
+import dev.lomio.R
+import androidx.annotation.StringRes
+import dev.lomio.ui.components.chatTitle
+import dev.lomio.ui.components.title
 
-enum class Destination(val label: String, val icon: ImageVector) {
-  CHAT("Chat", Icons.Outlined.ChatBubbleOutline),
-  MODELS("Models", Icons.Outlined.Inventory2),
-  BENCHMARK("Benchmark", Icons.Outlined.Speed),
-  SETTINGS("Settings", Icons.Outlined.Settings),
-  ABOUT("About", Icons.Outlined.Info),
+enum class Destination(@StringRes val label: Int, val icon: ImageVector) {
+  CHAT(R.string.nav_chat, Icons.Outlined.ChatBubbleOutline),
+  MODELS(R.string.nav_models, Icons.Outlined.Inventory2),
+  BENCHMARK(R.string.nav_benchmark, Icons.Outlined.Speed),
+  SETTINGS(R.string.nav_settings, Icons.Outlined.Settings),
+  ABOUT(R.string.nav_about, Icons.Outlined.Info),
 }
 
 class DrawerActions(
@@ -99,11 +104,11 @@ fun DrawerContent(
       ) {
         Icon(Icons.Outlined.Add, null)
         Spacer(Modifier.size(8.dp))
-        Text("New chat")
+        Text(stringResource(R.string.chat_new))
       }
       Destination.entries.forEach { d ->
         NavigationDrawerItem(
-          label = { Text(d.label) },
+          label = { Text(stringResource(d.label)) },
           icon = { Icon(d.icon, null) },
           selected = d == current,
           onClick = { actions.onNavigate(d) },
@@ -113,7 +118,7 @@ fun DrawerContent(
       OutlinedTextField(
         value = query,
         onValueChange = actions.onSearch,
-        placeholder = { Text("Search chats") },
+        placeholder = { Text(stringResource(R.string.drawer_search_chats)) },
         leadingIcon = { Icon(Icons.Outlined.Search, null) },
         singleLine = true,
         shape = RoundedCornerShape(28.dp),
@@ -126,7 +131,7 @@ fun DrawerContent(
       if (query.isNotBlank()) {
         item(key = "search-messages") {
           NavigationDrawerItem(
-            label = { Text("Search messages for “${query.trim()}”", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            label = { Text(stringResource(R.string.drawer_search_messages_for, query.trim()), maxLines = 1, overflow = TextOverflow.Ellipsis) },
             icon = { Icon(Icons.AutoMirrored.Outlined.ManageSearch, null) },
             selected = false,
             onClick = { actions.onOpenSearch(query) },
@@ -137,7 +142,7 @@ fun DrawerContent(
       if (history.isEmpty()) {
         item {
           Text(
-            if (query.isBlank()) "No chats yet" else "No chats match \"$query\"",
+            if (query.isBlank()) stringResource(R.string.drawer_no_chats) else stringResource(R.string.drawer_no_chats_match, query.trim()),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(16.dp),
           )
@@ -146,7 +151,7 @@ fun DrawerContent(
       history.forEach { (bucket, items) ->
         item(key = "h-${bucket.name}") {
           Text(
-            bucket.label,
+            bucket.title(),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
@@ -167,7 +172,7 @@ fun DrawerContent(
   }
   exporting?.let { c ->
     ExportFormatDialog(
-      "Export “${c.title}”",
+      stringResource(R.string.drawer_export_named, chatTitle(c.title)),
       onPick = {
         exporting = null
         actions.onExport(c.id, c.title, it)
@@ -178,18 +183,18 @@ fun DrawerContent(
   deleting?.let { c ->
     AlertDialog(
       onDismissRequest = { deleting = null },
-      title = { Text("Delete chat?") },
-      text = { Text("“${c.title}” and all its messages will be deleted from this device.") },
+      title = { Text(stringResource(R.string.drawer_delete_title)) },
+      text = { Text(stringResource(R.string.drawer_delete_body, chatTitle(c.title))) },
       confirmButton = {
         TextButton(onClick = { deleting = null; actions.onDelete(c.id) }) {
-          Text("Delete", color = MaterialTheme.colorScheme.error)
+          Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
         }
       },
-      dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
+      dismissButton = { TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.action_cancel)) } },
     )
   }
   renaming?.let { c ->
-    TextInputDialog("Rename chat", c.title, singleLine = true, onDismiss = { renaming = null }) {
+    TextInputDialog(stringResource(R.string.chat_rename_title), c.title, singleLine = true, onDismiss = { renaming = null }) {
       actions.onRename(c.id, it)
       renaming = null
     }
@@ -217,35 +222,35 @@ private fun HistoryRow(
           .combinedClickable(
             onClick = { actions.onOpenChat(c.id) },
             onLongClick = { menu = true },
-            onLongClickLabel = "Chat options",
+            onLongClickLabel = stringResource(R.string.drawer_chat_options),
           ),
     ) {
       Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (c.pinned) {
-          Icon(Icons.Outlined.PushPin, "Pinned", Modifier.size(14.dp))
+          Icon(Icons.Outlined.PushPin, stringResource(R.string.drawer_pinned), Modifier.size(14.dp))
           Spacer(Modifier.size(8.dp))
         }
-        Text(c.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+        Text(chatTitle(c.title), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
       }
     }
     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
       DropdownMenuItem(
-        text = { Text(if (c.pinned) "Unpin" else "Pin") },
+        text = { Text(stringResource(if (c.pinned) R.string.drawer_unpin else R.string.drawer_pin)) },
         leadingIcon = { Icon(Icons.Outlined.PushPin, null) },
         onClick = { menu = false; actions.onPin(c.id, !c.pinned) },
       )
       DropdownMenuItem(
-        text = { Text("Rename") },
+        text = { Text(stringResource(R.string.action_rename)) },
         leadingIcon = { Icon(Icons.Outlined.Edit, null) },
         onClick = { menu = false; onRename() },
       )
       DropdownMenuItem(
-        text = { Text("Export") },
+        text = { Text(stringResource(R.string.action_export)) },
         leadingIcon = { Icon(Icons.Outlined.FileDownload, null) },
         onClick = { menu = false; onExport() },
       )
       DropdownMenuItem(
-        text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+        text = { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) },
         leadingIcon = { Icon(Icons.Outlined.Delete, null, tint = MaterialTheme.colorScheme.error) },
         onClick = { menu = false; onDelete() },
       )

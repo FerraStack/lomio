@@ -61,6 +61,9 @@ import androidx.compose.ui.unit.dp
 import dev.lomio.data.db.ModelState
 import dev.lomio.domain.Fit
 import dev.lomio.ui.components.Format
+import androidx.compose.ui.res.stringResource
+import dev.lomio.R
+import dev.lomio.data.download.DownloadRunner
 
 data class ModelCardState(
   val id: String,
@@ -138,11 +141,11 @@ fun ModelsScreen(state: ModelsUiState, actions: ModelsActions, modifier: Modifie
     snackbarHost = { SnackbarHost(snackbar) },
     topBar = {
       TopAppBar(
-        title = { Text("Models") },
-        navigationIcon = { IconButton(onClick = actions.onOpenDrawer) { Icon(Icons.Outlined.Menu, "Open menu") } },
+        title = { Text(stringResource(R.string.models_title)) },
+        navigationIcon = { IconButton(onClick = actions.onOpenDrawer) { Icon(Icons.Outlined.Menu, stringResource(R.string.action_open_menu)) } },
         actions = {
-          IconButton(onClick = actions.onSearchHf) { Icon(Icons.Outlined.Search, "Search Hugging Face") }
-          IconButton(onClick = actions.onStorage) { Icon(Icons.Outlined.Storage, "Storage") }
+          IconButton(onClick = actions.onSearchHf) { Icon(Icons.Outlined.Search, stringResource(R.string.models_search_hf)) }
+          IconButton(onClick = actions.onStorage) { Icon(Icons.Outlined.Storage, stringResource(R.string.models_storage)) }
         },
       )
     },
@@ -150,12 +153,12 @@ fun ModelsScreen(state: ModelsUiState, actions: ModelsActions, modifier: Modifie
       Column(horizontalAlignment = Alignment.End) {
         DropdownMenu(expanded = fabMenu, onDismissRequest = { fabMenu = false }) {
           DropdownMenuItem(
-            text = { Text("Search Hugging Face") },
+            text = { Text(stringResource(R.string.models_search_hf)) },
             leadingIcon = { Icon(Icons.Outlined.Search, null) },
             onClick = { fabMenu = false; actions.onSearchHf() },
           )
           DropdownMenuItem(
-            text = { Text("Import local file") },
+            text = { Text(stringResource(R.string.models_import)) },
             leadingIcon = { Icon(Icons.Outlined.FileOpen, null) },
             onClick = { fabMenu = false; actions.onImport() },
           )
@@ -163,7 +166,7 @@ fun ModelsScreen(state: ModelsUiState, actions: ModelsActions, modifier: Modifie
         ExtendedFloatingActionButton(
           onClick = { fabMenu = true },
           icon = { Icon(Icons.Outlined.Add, null) },
-          text = { Text("Add model") },
+          text = { Text(stringResource(R.string.models_add)) },
         )
       }
     },
@@ -173,18 +176,18 @@ fun ModelsScreen(state: ModelsUiState, actions: ModelsActions, modifier: Modifie
       verticalArrangement = Arrangement.spacedBy(12.dp),
       modifier = Modifier.fillMaxSize().padding(padding),
     ) {
-      item { SectionTitle("On this device") }
+      item { SectionTitle(stringResource(R.string.models_on_device)) }
       if (state.models.isEmpty()) {
         item {
           Text(
-            "No models yet. Download one below, search Hugging Face, or import a .gguf file.",
+            stringResource(R.string.models_empty),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
         }
       }
       items(state.models, key = { it.id }) { ModelCard(it, actions) }
       if (state.recommended.isNotEmpty()) {
-        item { SectionTitle("Recommended to start") }
+        item { SectionTitle(stringResource(R.string.models_recommended)) }
         items(state.recommended, key = { it.model.repo }) { RecommendedCard(it, actions) }
       }
     }
@@ -201,7 +204,7 @@ private fun RecommendedCard(card: RecommendedCardState, actions: ModelsActions) 
         Text(r.title, style = MaterialTheme.typography.titleMedium)
         Text(r.repo, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
       }
-      Text(r.note, style = MaterialTheme.typography.bodyMedium)
+      Text(recommendedNote(r), style = MaterialTheme.typography.bodyMedium)
       FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         listOf(r.quant, Format.bytes(r.sizeBytes)).forEach {
           AssistChip(onClick = {}, label = { Text(it, style = MaterialTheme.typography.labelSmall) })
@@ -210,18 +213,29 @@ private fun RecommendedCard(card: RecommendedCardState, actions: ModelsActions) 
       Row(verticalAlignment = Alignment.CenterVertically) {
         FitHint(card.fit, Modifier.weight(1f))
         if (card.added) {
-          OutlinedButton(onClick = {}, enabled = false) { Text("Added") }
+          OutlinedButton(onClick = {}, enabled = false) { Text(stringResource(R.string.state_added)) }
         } else {
           Button(onClick = { actions.onDownloadRecommended(r) }) {
             Icon(Icons.Outlined.Download, null, Modifier.size(18.dp))
             Spacer(Modifier.size(8.dp))
-            Text("Download")
+            Text(stringResource(R.string.action_download))
           }
         }
       }
     }
   }
 }
+
+/** The starter list's notes in the user's language (the catalogue keeps English as data). */
+@Composable
+fun recommendedNote(r: RecommendedModel): String =
+  when (r.repo) {
+    "ggml-org/gemma-3-1b-it-GGUF" -> stringResource(R.string.rec_gemma1b)
+    "unsloth/Qwen3-1.7B-GGUF" -> stringResource(R.string.rec_qwen17)
+    "bartowski/Llama-3.2-3B-Instruct-GGUF" -> stringResource(R.string.rec_llama3b)
+    "unsloth/gemma-3-4b-it-GGUF" -> stringResource(R.string.rec_gemma4b)
+    else -> r.note
+  }
 
 /** "Fits your device" / "Tight on memory" / "May not fit" from the memory estimate. */
 @Composable
@@ -232,9 +246,9 @@ fun FitHint(fit: Fit?, modifier: Modifier = Modifier) {
   }
   val (text, color, icon) =
     when (fit) {
-      Fit.FITS -> Triple("Fits your device", MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
-      Fit.TIGHT -> Triple("Tight on memory", MaterialTheme.colorScheme.tertiary, Icons.Outlined.WarningAmber)
-      Fit.WONT_FIT -> Triple("May not fit in memory", MaterialTheme.colorScheme.error, Icons.Outlined.WarningAmber)
+      Fit.FITS -> Triple(stringResource(R.string.fit_fits), MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
+      Fit.TIGHT -> Triple(stringResource(R.string.fit_tight), MaterialTheme.colorScheme.tertiary, Icons.Outlined.WarningAmber)
+      Fit.WONT_FIT -> Triple(stringResource(R.string.fit_wont_fit), MaterialTheme.colorScheme.error, Icons.Outlined.WarningAmber)
     }
   Row(modifier, verticalAlignment = Alignment.CenterVertically) {
     Icon(icon, null, Modifier.size(16.dp), tint = color)
@@ -246,16 +260,17 @@ fun FitHint(fit: Fit?, modifier: Modifier = Modifier) {
 /** Small "Vision" pill for models that can read images. */
 @Composable
 fun VisionBadge(modifier: Modifier = Modifier) {
+  val visionDescription = stringResource(R.string.vision_badge_a11y)
   Surface(
     color = MaterialTheme.colorScheme.tertiaryContainer,
     contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
     shape = RoundedCornerShape(50),
-    modifier = modifier.semantics(mergeDescendants = true) { contentDescription = "Vision: reads images" },
+    modifier = modifier.semantics(mergeDescendants = true) { contentDescription = visionDescription },
   ) {
     Row(Modifier.padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
       Icon(Icons.Outlined.Image, null, Modifier.size(14.dp))
       Spacer(Modifier.size(4.dp))
-      Text("Vision", style = MaterialTheme.typography.labelSmall)
+      Text(stringResource(R.string.vision_badge), style = MaterialTheme.typography.labelSmall)
     }
   }
 }
@@ -288,7 +303,7 @@ fun ModelCard(m: ModelCardState, actions: ModelsActions) {
         Text(m.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
       }
       FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOfNotNull(Format.params(m.params), m.quant, Format.bytes(m.sizeBytes), Format.context(m.contextLength)?.let { "$it ctx" })
+        listOfNotNull(Format.params(m.params), m.quant, Format.bytes(m.sizeBytes), Format.context(m.contextLength)?.let { stringResource(R.string.models_ctx_chip, it) })
           .forEach { AssistChip(onClick = {}, label = { Text(it, style = MaterialTheme.typography.labelSmall) }) }
       }
       if (m.fit == Fit.WONT_FIT || m.fit == Fit.TIGHT) FitHint(m.fit)
@@ -303,49 +318,55 @@ fun ModelCard(m: ModelCardState, actions: ModelsActions) {
             Text(
               when (m.state) {
                 ModelState.QUEUED ->
-                  if (m.error != null) "Waiting · ${Format.bytes(m.bytesDone)} of ${Format.bytes(m.sizeBytes)}"
-                  else "Queued · starts when a download finishes"
-                ModelState.PAUSED -> "${(m.progress * 100).toInt()}% · ${Format.bytes(m.bytesDone)} of ${Format.bytes(m.sizeBytes)} · paused"
-                else -> "${(m.progress * 100).toInt()}% · ${Format.bytes(m.bytesDone)} of ${Format.bytes(m.sizeBytes)}"
+                  if (m.error != null) stringResource(R.string.models_waiting, Format.bytes(m.bytesDone), Format.bytes(m.sizeBytes))
+                  else stringResource(R.string.models_queued)
+                else ->
+                  stringResource(
+                    if (m.state == ModelState.PAUSED) R.string.models_progress_paused else R.string.models_progress,
+                    (m.progress * 100).toInt(),
+                    Format.bytes(m.bytesDone),
+                    Format.bytes(m.sizeBytes),
+                  )
               },
               style = MaterialTheme.typography.labelMedium,
               modifier = Modifier.weight(1f),
             )
-            if (m.state != ModelState.PAUSED) TextButton(onClick = { actions.onPause(m.id) }) { Text("Pause") }
-            else TextButton(onClick = { actions.onResume(m.id) }) { Text("Resume") }
-            TextButton(onClick = { actions.onDelete(m.id) }) { Text("Cancel") }
+            if (m.state != ModelState.PAUSED) TextButton(onClick = { actions.onPause(m.id) }) { Text(stringResource(R.string.action_pause)) }
+            else TextButton(onClick = { actions.onResume(m.id) }) { Text(stringResource(R.string.action_resume)) }
+            TextButton(onClick = { actions.onDelete(m.id) }) { Text(stringResource(R.string.action_cancel)) }
           }
-          m.error?.takeIf { m.state != ModelState.PAUSED }?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+          m.error?.takeIf { m.state != ModelState.PAUSED }?.let { raw ->
+            val note = if (raw == DownloadRunner.NO_NOTIFICATION) stringResource(R.string.dl_no_notification) else raw
+            Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
           }
         }
         ModelState.ERROR -> {
-          Text(m.error ?: "Download failed", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+          Text(m.error ?: stringResource(R.string.models_download_failed), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
           Row {
-            TextButton(onClick = { actions.onResume(m.id) }) { Text("Retry") }
-            TextButton(onClick = { actions.onDelete(m.id) }) { Text("Remove") }
+            TextButton(onClick = { actions.onResume(m.id) }) { Text(stringResource(R.string.action_retry)) }
+            TextButton(onClick = { actions.onDelete(m.id) }) { Text(stringResource(R.string.action_remove)) }
           }
         }
         ModelState.READY ->
           Row(verticalAlignment = Alignment.CenterVertically) {
             when {
-              m.loading -> OutlinedButton(onClick = {}, enabled = false) { Text("Loading…") }
-              m.loaded -> OutlinedButton(onClick = actions.onUnload) { Text("Unload") }
-              else -> Button(onClick = { actions.onLoad(m.id) }) { Text("Load") }
+              m.loading -> OutlinedButton(onClick = {}, enabled = false) { Text(stringResource(R.string.state_loading)) }
+              m.loaded -> OutlinedButton(onClick = actions.onUnload) { Text(stringResource(R.string.action_unload)) }
+              else -> Button(onClick = { actions.onLoad(m.id) }) { Text(stringResource(R.string.action_load)) }
             }
             Spacer(Modifier.weight(1f))
-            IconButton(onClick = { actions.onSettings(m.id) }) { Icon(Icons.Outlined.Tune, "Settings for ${m.name}") }
-            IconButton(onClick = { actions.onDelete(m.id) }) { Icon(Icons.Outlined.Delete, "Delete ${m.name}") }
+            IconButton(onClick = { actions.onSettings(m.id) }) { Icon(Icons.Outlined.Tune, stringResource(R.string.models_settings_named, m.name)) }
+            IconButton(onClick = { actions.onDelete(m.id) }) { Icon(Icons.Outlined.Delete, stringResource(R.string.models_delete_named, m.name)) }
           }
         ModelState.REMOTE -> Unit
       }
       if (expanded) {
         Column {
           listOfNotNull(
-              m.arch?.let { "Architecture: $it" },
-              m.layers?.let { "Layers: $it" },
-              m.contextLength?.let { "Trained context: $it tokens" },
-              m.filePath?.let { "File: $it" },
+              m.arch?.let { stringResource(R.string.models_arch, it) },
+              m.layers?.let { stringResource(R.string.models_layers, it) },
+              m.contextLength?.let { stringResource(R.string.models_trained_ctx, it) },
+              m.filePath?.let { stringResource(R.string.models_file, it) },
             )
             .forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }

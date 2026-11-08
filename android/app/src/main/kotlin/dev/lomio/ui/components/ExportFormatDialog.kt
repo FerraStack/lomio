@@ -22,6 +22,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import dev.lomio.ui.ExportFormat
+import androidx.compose.ui.res.stringResource
+import dev.lomio.R
 
 /** Picks the export format; the system file picker opens next. */
 @Composable
@@ -31,16 +33,16 @@ fun ExportFormatDialog(title: String, onPick: (ExportFormat) -> Unit, onDismiss:
     title = { Text(title) },
     text = {
       Column {
-        FormatRow(Icons.AutoMirrored.Outlined.Article, "Markdown", "Easy to read and share. The visible replies only.") {
+        FormatRow(Icons.AutoMirrored.Outlined.Article, "Markdown", stringResource(R.string.export_markdown_sub)) {
           onPick(ExportFormat.MARKDOWN)
         }
-        FormatRow(Icons.Outlined.DataObject, "JSON", "Everything, including other reply versions. Can be imported again.") {
+        FormatRow(Icons.Outlined.DataObject, "JSON", stringResource(R.string.export_json_sub)) {
           onPick(ExportFormat.JSON)
         }
       }
     },
     confirmButton = {},
-    dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
   )
 }
 

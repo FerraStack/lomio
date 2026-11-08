@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import dev.lomio.R
 
 /** Pure mapping from the database rows and a disk scan to what the screen shows. */
 fun storageUiState(models: List<ModelEntity>, activeId: String?, scan: StorageScan, now: Long): StorageUiState =
@@ -60,7 +61,7 @@ class StorageViewModel(private val c: AppContainer, private val clock: () -> Lon
     combine(c.models.observeModels(), c.modelManager.activeModelId, rescan) { models, active, _ -> models to active }
       .mapLatest { (models, active) ->
         runCatching { storageUiState(models, active, c.storage.scan(models), clock()) }
-          .getOrElse { e -> StorageUiState(loading = false, message = "Couldn't measure storage: ${e.message}") }
+          .getOrElse { e -> StorageUiState(loading = false, message = c.text.getString(R.string.storage_scan_failed, e.message.orEmpty())) }
       }
 
   val state: StateFlow<StorageUiState> =
@@ -74,15 +75,15 @@ class StorageViewModel(private val c: AppContainer, private val clock: () -> Lon
       c.models.delete(id)
     }
     val freed = rows.sumOf { it.bytes }
-    if (rows.size == 1) "Deleted ${rows[0].name} · freed ${Format.bytes(freed)}"
-    else "Deleted ${rows.size} models · freed ${Format.bytes(freed)}"
+    if (rows.size == 1) c.text.getString(R.string.storage_deleted_one, rows[0].name, Format.bytes(freed))
+    else c.text.getQuantityString(R.plurals.storage_deleted_many, rows.size, rows.size, Format.bytes(freed))
   }
 
-  fun clearCache() = work { "Cleared ${Format.bytes(c.storage.clearCache())} of temporary files" }
+  fun clearCache() = work { c.text.getString(R.string.storage_cleared_temp, Format.bytes(c.storage.clearCache())) }
 
   fun removeLeftovers() = work {
     val freed = c.storage.deleteLeftovers(c.models.observeModels().first())
-    "Removed leftover files · freed ${Format.bytes(freed)}"
+    c.text.getString(R.string.storage_removed_leftovers, Format.bytes(freed))
   }
 
   fun messageShown() {
@@ -93,7 +94,7 @@ class StorageViewModel(private val c: AppContainer, private val clock: () -> Lon
     viewModelScope.launch {
       if (busy.value) return@launch
       busy.value = true
-      message.value = runCatching { block() }.getOrElse { "Clean-up failed: ${it.message}" }
+      message.value = runCatching { block() }.getOrElse { c.text.getString(R.string.storage_cleanup_failed, it.message.orEmpty()) }
       rescan.update { it + 1 }
       busy.value = false
     }

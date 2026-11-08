@@ -57,14 +57,4 @@ object Storage {
       else -> LastUsed.MonthsAgo((days / 30).coerceAtLeast(1))
     }
   }
-
-  fun lastUsedLabel(l: LastUsed): String =
-    when (l) {
-      LastUsed.Never -> "Never loaded"
-      LastUsed.Today -> "Used today"
-      LastUsed.Yesterday -> "Used yesterday"
-      is LastUsed.DaysAgo -> "Used ${l.days} days ago"
-      is LastUsed.WeeksAgo -> if (l.weeks == 1) "Used last week" else "Used ${l.weeks} weeks ago"
-      is LastUsed.MonthsAgo -> if (l.months == 1) "Used a month ago" else "Used ${l.months} months ago"
-    }
 }
