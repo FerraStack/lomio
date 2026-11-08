@@ -1,12 +1,13 @@
 package dev.lomio
 
 import android.os.ParcelFileDescriptor
+import androidx.compose.ui.test.ComposeTimeoutException
+import android.util.Log
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -70,21 +71,28 @@ class StreamingStressTest {
         // The overflow menu's item (the title and the drawer button also say "New chat").
         compose.onNode(hasText("New chat") and hasAnyAncestor(isPopup())).performClick()
         compose.onNode(hasSetTextAction() and hasText("Message")).performTextInput("Once upon a time $round")
+        // Explicit "this round's generation has started" signal: either it is streaming now, or it
+        // already finished (a 96-token reply from a 15M model can complete before we first look,
+        // which made a plain `isGenerating` wait time out).
+        val finishedBefore = c.chatService.state.value.lastFinished?.id
         compose.onNodeWithContentDescription("Send").performClick()
-        compose.waitUntil(30_000) { c.chatService.state.value.isGenerating }
+        await(round, "the reply to start", 30_000) {
+          val s = c.chatService.state.value
+          s.isGenerating || s.lastFinished?.id != finishedBefore || s.error != null
+        }
 
         var swipes = 0
         while (c.chatService.state.value.isGenerating && swipes < 12) {
           compose.onRoot().performTouchInput { if (swipes % 2 == 0) swipeDown() else swipeUp() }
           swipes++
           if (round % 4 == 3 && swipes == 2) {
-            compose.onAllNodesWithContentDescription("Stop").fetchSemanticsNodes().takeIf { it.isNotEmpty() }?.let {
-              compose.onNodeWithContentDescription("Stop").performClick()
-            }
+            // The reply may end between the check and the tap; a missed Stop is fine here.
+            runCatching { compose.onNodeWithContentDescription("Stop").performClick() }
           }
         }
-        compose.waitUntil(60_000) { !c.chatService.state.value.isGenerating }
+        await(round, "the reply to finish", 60_000) { !c.chatService.state.value.isGenerating }
         compose.waitForIdle()
+        Log.i(TAG, "round $round done after $swipes swipes: ${describe()}")
 
         val conversation = c.chatService.state.value.lastFinished
         assertTrue("round $round: no reply", conversation != null)
@@ -99,7 +107,25 @@ class StreamingStressTest {
     }
   }
 
+  /** Current generation state, for failure messages and the log. */
+  private fun describe(): String {
+    val s = app.container.chatService.state.value
+    return "generating=${s.isGenerating} streaming=${s.streaming?.let { "${it.id} (${it.content.length} chars)" }} " +
+      "lastFinished=${s.lastFinished?.let { "${it.id} ${it.status}" }} error=${s.error}"
+  }
+
+  /** waitUntil that fails with which wait timed out and the generation state, instead of a bare timeout. */
+  private fun await(round: Int, what: String, timeoutMs: Long, condition: () -> Boolean) {
+    try {
+      compose.waitUntil(timeoutMs, condition)
+    } catch (e: ComposeTimeoutException) {
+      throw AssertionError("round $round: timed out after $timeoutMs ms waiting for $what; ${describe()}", e)
+    }
+    app.container.chatService.state.value.error?.let { throw AssertionError("round $round: generation error: $it") }
+  }
+
   private companion object {
     const val ROUNDS = 20
+    const val TAG = "lomio-e2e-stress"
   }
 }
