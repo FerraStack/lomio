@@ -29,28 +29,26 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CMAKE_BUILD_PARALLEL_LEVEL: "4"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
 
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: android-actions/setup-android@v4
-
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
       - name: Install NDK and CMake
         run: sdkmanager --install "ndk;30.0.16248370" "cmake;3.31.6" > /dev/null
 
-      - uses: hendrikmuhs/ccache-action@v1.2.24
+      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
           key: llama-${{ hashFiles('.gitmodules', 'android/llama/src/main/cpp/**', 'android/llama/build.gradle.kts') }}
           restore-keys: llama-
           max-size: 2G
 
-      - uses: gradle/actions/setup-gradle@v6
-
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
       - name: Unit tests (+ Roborazzi screenshots)
         run: ./gradlew --max-workers=4 testDebugUnitTest
 
@@ -75,26 +73,26 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk ../apks/
           cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk ../apks/
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lomio-debug-apk
           path: apks/*.apk
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: room-schema
           path: android/app/schemas/
           if-no-files-found: warn
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: screenshots
           path: android/app/build/outputs/roborazzi/*.png
           if-no-files-found: warn
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: test-reports
@@ -121,15 +119,14 @@ jobs:
       E2E_VISION_MODEL: models/e2e-vision.gguf
       E2E_VISION_MMPROJ: models/e2e-vision-mmproj.gguf
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: lomio-debug-apk
           path: apk
 
       - name: Cache tiny GGUFs
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: models
           key: e2e-models-${{ env.E2E_MODEL_SHA256 }}-${{ env.E2E_VISION_MODEL_SHA256 }}-${{ env.E2E_VISION_MMPROJ_SHA256 }}
@@ -153,7 +150,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - uses: reactivecircus/android-emulator-runner@v2.38.0
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
           arch: x86_64
@@ -163,7 +160,7 @@ jobs:
           disable-animations: true
           script: bash scripts/ci/emulator-e2e.sh
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: emulator-screenshot
@@ -182,12 +179,12 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: screenshots
           path: shots
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
         with:
           name: emulator-screenshot
@@ -206,17 +203,28 @@ jobs:
           git init -q pub
           cd pub
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if git fetch -q --depth 1 origin ci-screenshots 2>/dev/null; then
             git checkout -q -b ci-screenshots FETCH_HEAD
           else
             git checkout -q --orphan ci-screenshots
           fi
+          # Only this PR's latest run is kept: older runs of the same PR are dropped.
+          git rm -rq --ignore-unmatch "pr-$PR" > /dev/null
           mkdir -p "$dir"
           find ../shots -name '*.png' -exec cp {} "$dir"/ \;
           git add -A
-          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -qm "Screenshots for PR #$PR (run $RUN_ID)"
-          git push -q origin ci-screenshots
+          git commit -qm "Screenshots for PR #$PR (run $RUN_ID)"
+          # Another PR may have pushed meanwhile: rebase onto it and retry (issue #6).
+          for attempt in 1 2 3 4 5; do
+            if git push -q origin HEAD:ci-screenshots; then break; fi
+            if [ "$attempt" = 5 ]; then echo "::error::could not push screenshots"; exit 1; fi
+            sleep $((attempt * 3))
+            git fetch -q --depth 1 origin ci-screenshots
+            # Replay just our commit on top of whatever was pushed (PR folders never overlap).
+            git rebase -q --onto FETCH_HEAD HEAD~1
+          done
 
           base="https://raw.githubusercontent.com/${REPO}/ci-screenshots/${dir}"
           {
