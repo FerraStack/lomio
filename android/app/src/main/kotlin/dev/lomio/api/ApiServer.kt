@@ -79,7 +79,9 @@ class ApiServer(private val backend: ApiBackend, private val clock: () -> Long =
   @Synchronized
   fun start(config: ApiServerConfig): Int {
     check(server == null) { "already running" }
-    val address = if (config.lan) InetAddress.getByName("0.0.0.0") else InetAddress.getLoopbackAddress()
+    // Not InetAddress.getLoopbackAddress(): on Android that is ::1, and clients (and our docs)
+    // use http://127.0.0.1.
+    val address = InetAddress.getByName(if (config.lan) "0.0.0.0" else "127.0.0.1")
     val ss = ServerSocket()
     try {
       ss.reuseAddress = true
