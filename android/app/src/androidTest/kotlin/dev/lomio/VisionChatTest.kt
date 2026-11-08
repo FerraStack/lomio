@@ -20,7 +20,6 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
-import androidx.test.espresso.Espresso
 import androidx.test.espresso.intent.Intents
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.isInternal
@@ -135,12 +134,14 @@ class VisionChatTest {
     compose.waitUntil(300_000) { c.modelManager.activeModelId.value != null }
     val info = (c.modelManager.engineState.value as EngineState.Loaded).info
     assertTrue("projector not loaded", info.supportsVision)
-    // The model sheet closes on pick; on a busy emulator it can linger, so make sure it's gone.
+    // The model sheet closes on pick, but its hide animation can stall while the projector's
+    // warm-up keeps the emulator's CPUs busy. Give it time, then fall back to a system Back
+    // (an input event: Espresso's pressBack needs window focus, which the sheet holds).
     val sheetOpen = { compose.onAllNodesWithText("Choose a model").fetchSemanticsNodes().isNotEmpty() }
-    runCatching { compose.waitUntil(10_000) { !sheetOpen() } }
+    runCatching { compose.waitUntil(60_000) { !sheetOpen() } }
     if (sheetOpen()) {
-      Espresso.pressBackUnconditionally()
-      compose.waitUntil(10_000) { !sheetOpen() }
+      shell("input keyevent KEYCODE_BACK")
+      compose.waitUntil(30_000) { !sheetOpen() }
     }
 
     // Attach: the Photo Picker is another app, so answer its intent with our image.
