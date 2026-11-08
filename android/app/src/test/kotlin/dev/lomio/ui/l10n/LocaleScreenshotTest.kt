@@ -3,6 +3,8 @@ package dev.lomio.ui.l10n
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -56,9 +58,11 @@ import org.robolectric.annotation.GraphicsMode
 class LocaleScreenshotTest {
   @get:Rule val compose = createComposeRule()
 
-  private fun shoot(name: String, dark: Boolean = false, content: @Composable () -> Unit) {
+  private fun shoot(name: String, dark: Boolean = false, rtl: Boolean = false, content: @Composable () -> Unit) {
     compose.setContent {
-      CompositionLocalProvider(LocalInspectionMode provides true) {
+      // Forced explicitly: Robolectric's `ldrtl` qualifier doesn't reach Compose's layout direction.
+      val direction = if (rtl) LayoutDirection.Rtl else LocalLayoutDirection.current
+      CompositionLocalProvider(LocalInspectionMode provides true, LocalLayoutDirection provides direction) {
         LomioTheme(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColor = false) { content() }
       }
     }
@@ -68,10 +72,10 @@ class LocaleScreenshotTest {
 
   private val model = PickerModel("m1", "Qwen3 1.7B", "Q4_K_M", 1_280_000_000, loaded = true)
 
-  private fun chat(question: String, answer: String) =
+  private fun chat(question: String, answer: String, followUp: String) =
     ChatUiState(
       conversationId = "c1",
-      title = question.take(28),
+      title = question,
       modelName = "Qwen3 1.7B",
       modelStatus = ModelStatus.LOADED,
       downloadedModels = listOf(model),
@@ -86,7 +90,7 @@ class LocaleScreenshotTest {
             reasoning = "…",
             stats = GenerationStats(38, 0, 41, 420, 95.0, 18.3, StopReason.EOS),
           ),
-          UiMessage("u2", MessageRole.USER, question.reversed().take(12)),
+          UiMessage("u2", MessageRole.USER, followUp),
           UiMessage("a2", MessageRole.ASSISTANT, "", status = MessageStatus.STOPPED),
         ),
     )
@@ -95,12 +99,14 @@ class LocaleScreenshotTest {
     chat(
       "Как развернуть строку в Kotlin?",
       "Используйте **`reversed()`** из стандартной библиотеки:\n\n```kotlin\nprintln(\"Lomio\".reversed())\n```",
+      "А без стандартной библиотеки?",
     )
 
   private val ukChat =
     chat(
       "Як розвернути рядок у Kotlin?",
       "Скористайтеся **`reversed()`** зі стандартної бібліотеки:\n\n```kotlin\nprintln(\"Lomio\".reversed())\n```",
+      "А без стандартної бібліотеки?",
     )
 
   private val models =
@@ -163,7 +169,7 @@ class LocaleScreenshotTest {
 
   @Test @Config(qualifiers = "+uk") fun ukSettings() = shoot("uk_settings", dark = true) { SettingsScreen(AppSettings(), {}, {}) }
 
-  @Test @Config(qualifiers = "+ldrtl") fun rtlChat() = shoot("rtl_chat") { ChatScreen(ruChat, ChatActions()) }
+  @Test fun rtlChat() = shoot("rtl_chat", rtl = true) { ChatScreen(ruChat, ChatActions()) }
 
-  @Test @Config(qualifiers = "+ldrtl") fun rtlStorage() = shoot("rtl_storage") { StorageScreen(storage, StorageActions()) }
+  @Test fun rtlStorage() = shoot("rtl_storage", rtl = true) { StorageScreen(storage, StorageActions()) }
 }
