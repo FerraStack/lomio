@@ -61,7 +61,9 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import dev.lomio.R
 import dev.lomio.domain.Fit
+import androidx.compose.ui.res.stringResource
 import dev.lomio.ui.components.Format
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -76,13 +78,14 @@ sealed interface StarterDownload {
 
   data object Ready : StarterDownload
 
-  data class Failed(val message: String) : StarterDownload
+  /** [message] null: a generic "download failed" text. */
+  data class Failed(val message: String?) : StarterDownload
 }
 
 data class OnboardingUiState(
   val step: OnboardingStep = OnboardingStep.WELCOME,
-  /** Marketing RAM size, e.g. "8 GB". */
-  val ramLabel: String = "",
+  /** Marketing RAM size in GB, e.g. 8. */
+  val ramGb: Int = 0,
   val options: List<StarterOption> = emptyList(),
   val selected: Int = -1,
   val download: StarterDownload? = null,
@@ -130,11 +133,12 @@ fun OnboardingScreen(state: OnboardingUiState, actions: OnboardingActions, modif
 
 @Composable
 private fun StepDots(step: OnboardingStep) {
+  val stepDescription = stringResource(R.string.onboarding_step, step.ordinal + 1, OnboardingStep.entries.size)
   Row(
     horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
     modifier =
       Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp).semantics {
-        contentDescription = "Step ${step.ordinal + 1} of ${OnboardingStep.entries.size}"
+        contentDescription = stepDescription
       },
   ) {
     OnboardingStep.entries.forEach { s ->
@@ -159,24 +163,24 @@ private fun ColumnScope.Welcome(actions: OnboardingActions) {
     Mark()
     Spacer(Modifier.height(28.dp))
     Text(
-      "Chat with AI, privately",
+      stringResource(R.string.onboarding_title),
       style = MaterialTheme.typography.headlineMedium,
       textAlign = TextAlign.Center,
       modifier = Modifier.semantics { heading() },
     )
     Text(
-      "Lomio runs open language models right on your phone.",
+      stringResource(R.string.onboarding_subtitle),
       style = MaterialTheme.typography.bodyLarge,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
       textAlign = TextAlign.Center,
       modifier = Modifier.padding(top = 8.dp),
     )
     Spacer(Modifier.height(32.dp))
-    Feature(Icons.Outlined.Lock, "Private by design", "Your chats never leave this phone. No account, no analytics.")
-    Feature(Icons.Outlined.CloudOff, "Works offline", "After the one-time model download, no connection is needed.")
-    Feature(Icons.Outlined.AutoAwesome, "Open models", "Start with a small one; add others from Hugging Face later.")
+    Feature(Icons.Outlined.Lock, stringResource(R.string.onboarding_private_title), stringResource(R.string.onboarding_private_body))
+    Feature(Icons.Outlined.CloudOff, stringResource(R.string.onboarding_offline_title), stringResource(R.string.onboarding_offline_body))
+    Feature(Icons.Outlined.AutoAwesome, stringResource(R.string.onboarding_open_title), stringResource(R.string.onboarding_open_body))
   }
-  Button(onClick = actions.onNext, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Get started") }
+  Button(onClick = actions.onNext, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text(stringResource(R.string.onboarding_get_started)) }
   Spacer(Modifier.height(24.dp))
 }
 
@@ -213,11 +217,11 @@ private fun Feature(icon: ImageVector, title: String, body: String) {
 private fun ColumnScope.Pick(state: OnboardingUiState, actions: OnboardingActions) {
   Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
     Spacer(Modifier.height(16.dp))
-    Text("Pick your first model", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+    Text(stringResource(R.string.onboarding_pick_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp, bottom = 16.dp)) {
       Icon(Icons.Outlined.Memory, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
       Text(
-        "Your phone has ${state.ramLabel} of memory. We picked one that runs well on it.",
+        stringResource(R.string.onboarding_pick_ram, stringResource(R.string.onboarding_ram_gb, state.ramGb)),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 8.dp),
@@ -227,7 +231,7 @@ private fun ColumnScope.Pick(state: OnboardingUiState, actions: OnboardingAction
       state.options.forEachIndexed { i, o -> OptionCard(o, selected = i == state.selected, recommended = i == state.recommendedIndex()) { actions.onSelect(i) } }
     }
     Text(
-      "Downloads once over the internet (Wi-Fi recommended). You can add or remove models any time.",
+      stringResource(R.string.onboarding_pick_note),
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
       modifier = Modifier.padding(top = 16.dp),
@@ -240,9 +244,9 @@ private fun ColumnScope.Pick(state: OnboardingUiState, actions: OnboardingAction
     enabled = pick != null,
     modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
   ) {
-    Text(pick?.let { "Download · ${Format.bytes(it.model.sizeBytes)}" } ?: "Download")
+    Text(pick?.let { stringResource(R.string.onboarding_download_size, Format.bytes(it.model.sizeBytes)) } ?: stringResource(R.string.onboarding_download))
   }
-  TextButton(onClick = actions.onSkip, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) { Text("Skip for now") }
+  TextButton(onClick = actions.onSkip, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) { Text(stringResource(R.string.onboarding_skip)) }
 }
 
 /** The preselected recommendation is shown with a "Recommended" tag even after the user changes the pick. */
@@ -272,7 +276,7 @@ private fun OptionCard(o: StarterOption, selected: Boolean, recommended: Boolean
         Text(o.model.title, style = MaterialTheme.typography.titleMedium)
         if (recommended) {
           Text(
-            "Recommended",
+            stringResource(R.string.onboarding_recommended),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onPrimary,
             modifier =
@@ -300,9 +304,9 @@ private fun OptionCard(o: StarterOption, selected: Boolean, recommended: Boolean
 private fun FitTag(fit: Fit?) {
   val (text, color, icon) =
     when (fit) {
-      Fit.FITS -> Triple("Fits", MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
-      Fit.TIGHT -> Triple("Tight", MaterialTheme.colorScheme.tertiary, Icons.Outlined.WarningAmber)
-      Fit.WONT_FIT -> Triple("Too big", MaterialTheme.colorScheme.error, Icons.Outlined.WarningAmber)
+      Fit.FITS -> Triple(stringResource(R.string.onboarding_fit_fits), MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
+      Fit.TIGHT -> Triple(stringResource(R.string.onboarding_fit_tight), MaterialTheme.colorScheme.tertiary, Icons.Outlined.WarningAmber)
+      Fit.WONT_FIT -> Triple(stringResource(R.string.onboarding_fit_too_big), MaterialTheme.colorScheme.error, Icons.Outlined.WarningAmber)
       null -> return
     }
   Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 10.dp)) {
@@ -313,7 +317,7 @@ private fun FitTag(fit: Fit?) {
 
 @Composable
 private fun ColumnScope.Download(state: OnboardingUiState, actions: OnboardingActions) {
-  val name = state.options.getOrNull(state.selected)?.model?.title ?: "your model"
+  val name = state.options.getOrNull(state.selected)?.model?.title ?: stringResource(R.string.onboarding_your_model)
   val d = state.download
   Column(
     Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
@@ -329,10 +333,10 @@ private fun ColumnScope.Download(state: OnboardingUiState, actions: OnboardingAc
             contentAlignment = Alignment.Center,
             modifier = Modifier.size(120.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
           ) {
-            Icon(Icons.Outlined.CheckCircle, "Download complete", Modifier.size(56.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            Icon(Icons.Outlined.CheckCircle, stringResource(R.string.onboarding_download_complete), Modifier.size(56.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
           }
         is StarterDownload.Failed ->
-          Icon(Icons.Outlined.ErrorOutline, "Download failed", Modifier.size(72.dp), tint = MaterialTheme.colorScheme.error)
+          Icon(Icons.Outlined.ErrorOutline, stringResource(R.string.onboarding_download_failed), Modifier.size(72.dp), tint = MaterialTheme.colorScheme.error)
         else -> {
           CircularProgressIndicator(
             progress = { animated },
@@ -347,9 +351,9 @@ private fun ColumnScope.Download(state: OnboardingUiState, actions: OnboardingAc
     Spacer(Modifier.height(28.dp))
     Text(
       when (d) {
-        StarterDownload.Ready -> "$name is ready"
-        is StarterDownload.Failed -> "The download stopped"
-        else -> "Downloading $name"
+        StarterDownload.Ready -> stringResource(R.string.onboarding_ready_title, name)
+        is StarterDownload.Failed -> stringResource(R.string.onboarding_failed_title)
+        else -> stringResource(R.string.onboarding_downloading_title, name)
       },
       style = MaterialTheme.typography.headlineSmall,
       textAlign = TextAlign.Center,
@@ -357,11 +361,11 @@ private fun ColumnScope.Download(state: OnboardingUiState, actions: OnboardingAc
     )
     Text(
       when (d) {
-        StarterDownload.Ready -> "Everything from here on runs on your phone."
-        is StarterDownload.Failed -> d.message
+        StarterDownload.Ready -> stringResource(R.string.onboarding_ready_body)
+        is StarterDownload.Failed -> d.message ?: stringResource(R.string.onboarding_failed_generic)
         is StarterDownload.Running ->
-          d.note ?: "${Format.bytes(d.bytesDone)} of ${Format.bytes(d.total)}. You can leave this screen; the download keeps going."
-        null -> "Starting…"
+          d.note ?: stringResource(R.string.onboarding_progress, Format.bytes(d.bytesDone), Format.bytes(d.total))
+        null -> stringResource(R.string.onboarding_starting)
       },
       style = MaterialTheme.typography.bodyMedium,
       color = if (d is StarterDownload.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -375,16 +379,16 @@ private fun ColumnScope.Download(state: OnboardingUiState, actions: OnboardingAc
         if (state.loading) {
           CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
           Spacer(Modifier.width(12.dp))
-          Text("Loading…")
+          Text(stringResource(R.string.onboarding_loading))
         } else {
-          Text("Start chatting")
+          Text(stringResource(R.string.onboarding_start_chatting))
         }
       }
     is StarterDownload.Failed -> {
-      Button(onClick = actions.onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Try again") }
-      OutlinedButton(onClick = actions.onBack, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Pick another model") }
+      Button(onClick = actions.onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text(stringResource(R.string.onboarding_try_again)) }
+      OutlinedButton(onClick = actions.onBack, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text(stringResource(R.string.onboarding_pick_another)) }
     }
-    else -> OutlinedButton(onClick = actions.onSkip, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Continue in the background") }
+    else -> OutlinedButton(onClick = actions.onSkip, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text(stringResource(R.string.onboarding_continue_background)) }
   }
   Spacer(Modifier.height(24.dp))
 }

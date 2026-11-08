@@ -14,10 +14,10 @@ object Onboarding {
     return idx.minBy { sizes[it] }
   }
 
-  /** "8 GB" for 7.6 GiB of reported RAM: phones are sold by marketing sizes. */
-  fun ramLabel(totalBytes: Long): String {
+  /** 8 for 7.6 GiB of reported RAM: phones are sold by marketing sizes (GB). */
+  fun ramGb(totalBytes: Long): Int {
     val gib = totalBytes / (1024.0 * 1024 * 1024)
     val marketing = listOf(2, 3, 4, 6, 8, 12, 16, 24, 32).firstOrNull { gib <= it + 0.25 } ?: Math.round(gib).toInt()
-    return "$marketing GB"
+    return marketing
   }
 }

@@ -665,7 +665,7 @@ class ScreenshotTest {
 
   private val onboarding =
     OnboardingUiState(
-      ramLabel = "8 GB",
+      ramGb = 8,
       options = RECOMMENDED.mapIndexed { i, r -> StarterOption(r, if (i < 3) Fit.FITS else Fit.TIGHT) },
       selected = 2,
     )

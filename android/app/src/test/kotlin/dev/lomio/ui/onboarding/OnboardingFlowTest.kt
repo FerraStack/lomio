@@ -31,7 +31,7 @@ class OnboardingFlowTest {
   @Test
   fun welcomeToPickToDownload() {
     var state by mutableStateOf(
-      OnboardingUiState(ramLabel = "8 GB", options = RECOMMENDED.map { StarterOption(it, Fit.FITS) }, selected = 3)
+      OnboardingUiState(ramGb = 8, options = RECOMMENDED.map { StarterOption(it, Fit.FITS) }, selected = 3)
     )
     var downloaded = false
     compose.setContent {

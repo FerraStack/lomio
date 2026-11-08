@@ -42,15 +42,15 @@ class OnboardingViewModel(private val c: AppContainer) : ViewModel() {
       val m = id?.let { mid -> models.firstOrNull { it.id == mid } }
       val download =
         when {
-          err != null -> StarterDownload.Failed(err)
+          err != null -> StarterDownload.Failed(err.ifBlank { null })
           m == null -> null
           m.state == ModelState.READY -> StarterDownload.Ready
-          m.state == ModelState.ERROR -> StarterDownload.Failed(m.errorMessage ?: "Download failed")
+          m.state == ModelState.ERROR -> StarterDownload.Failed(m.errorMessage)
           else -> StarterDownload.Running(m.bytesDone, m.sizeBytes, m.errorMessage)
         }
-      OnboardingUiState(st, Onboarding.ramLabel(mem.totalBytes), options, sel, download, busy)
+      OnboardingUiState(st, Onboarding.ramGb(mem.totalBytes), options, sel, download, busy)
     }
-      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), OnboardingUiState(ramLabel = Onboarding.ramLabel(mem.totalBytes), options = options))
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), OnboardingUiState(ramGb = Onboarding.ramGb(mem.totalBytes), options = options))
 
   fun next() {
     step.value = OnboardingStep.entries[(step.value.ordinal + 1).coerceAtMost(OnboardingStep.entries.lastIndex)]
@@ -74,7 +74,7 @@ class OnboardingViewModel(private val c: AppContainer) : ViewModel() {
           modelId.value = it.id
           _started.value = true
         }
-        .onFailure { startError.value = it.message ?: "Couldn't start the download" }
+        .onFailure { startError.value = it.message ?: "" }
     }
 
   fun retry() =
