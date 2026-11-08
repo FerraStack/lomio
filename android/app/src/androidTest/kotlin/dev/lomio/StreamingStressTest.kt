@@ -3,7 +3,11 @@ package dev.lomio
 import android.os.ParcelFileDescriptor
 import androidx.compose.ui.test.ComposeTimeoutException
 import android.util.Log
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.isEnabled
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.hasText
@@ -75,7 +79,13 @@ class StreamingStressTest {
         // already finished (a 96-token reply from a 15M model can complete before we first look,
         // which made a plain `isGenerating` wait time out).
         val finishedBefore = c.chatService.state.value.lastFinished?.id
-        compose.onNodeWithContentDescription("Send").performClick()
+        // The composer moves while the keyboard animates in, so a synthetic tap can land where the
+        // button was a frame ago (round 5 of #18's run: no reply ever started). Wait until Send is
+        // enabled, then invoke its click action directly instead of tapping coordinates.
+        await(round, "Send to be enabled with the typed text", 10_000) {
+          compose.onAllNodes(hasContentDescription("Send") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNode(hasContentDescription("Send") and isEnabled()).performSemanticsAction(SemanticsActions.OnClick)
         await(round, "the reply to start", 30_000) {
           val s = c.chatService.state.value
           s.isGenerating || s.lastFinished?.id != finishedBefore || s.error != null
@@ -87,7 +97,7 @@ class StreamingStressTest {
           swipes++
           if (round % 4 == 3 && swipes == 2) {
             // The reply may end between the check and the tap; a missed Stop is fine here.
-            runCatching { compose.onNodeWithContentDescription("Stop").performClick() }
+            runCatching { compose.onNodeWithContentDescription("Stop").performSemanticsAction(SemanticsActions.OnClick) }
           }
         }
         await(round, "the reply to finish", 60_000) { !c.chatService.state.value.isGenerating }
