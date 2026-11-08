@@ -47,6 +47,7 @@ internal object NativeBridge {
     nGpuLayers: Int,
     useMmap: Boolean,
     chatTemplate: ByteArray?,
+    mmprojPath: ByteArray?,
   ): Long
 
   /**
@@ -66,7 +67,7 @@ internal object NativeBridge {
   external fun nativeFree(handle: Long)
 
   /**
-   * longs: `[nParams, sizeBytes, nCtxTrain, nCtx, nLayer, supportsThinking]`;
+   * longs: `[nParams, sizeBytes, nCtxTrain, nCtx, nLayer, supportsThinking, supportsVision]`;
    * strings: `[description, architecture, chatTemplate]`.
    */
   external fun nativeModelInfo(handle: Long, longs: LongArray, strings: Array<ByteArray?>)
@@ -87,13 +88,16 @@ internal object NativeBridge {
   /**
    * floats: `[temperature, topP, minP, repeatPenalty, presencePenalty, frequencyPenalty]`;
    * ints: `[topK, repeatLastN, maxTokens]`; stats (out): `[promptTokens, cachedTokens,
-   * generatedTokens, ttftMs, promptTps, genTps, stopReasonOrdinal]`.
+   * generatedTokens, ttftMs, promptTps, genTps, stopReasonOrdinal]`. images: the image paths of
+   * all messages in order; imageCounts[i]: how many of them belong to message i.
    */
   external fun nativeChat(
     handle: Long,
     roles: Array<ByteArray>,
     contents: Array<ByteArray>,
     reasonings: Array<ByteArray?>,
+    images: Array<ByteArray>,
+    imageCounts: IntArray,
     enableThinking: Boolean,
     floats: FloatArray,
     ints: IntArray,

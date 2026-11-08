@@ -53,6 +53,7 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
             params.nGpuLayers,
             params.useMmap,
             params.chatTemplate?.takeIf { it.isNotBlank() }?.toByteArray(),
+            params.mmprojPath?.toByteArray(),
           )
         val info = readInfo(handle)
         loadedPath = path
@@ -111,6 +112,8 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
                 messages.map { it.role.toByteArray() }.toTypedArray(),
                 messages.map { it.content.toByteArray() }.toTypedArray(),
                 messages.map { it.reasoning?.toByteArray() }.toTypedArray(),
+                messages.flatMap { it.images }.map { it.toByteArray() }.toTypedArray(),
+                messages.map { it.images.size }.toIntArray(),
                 enableThinking,
                 floatArrayOf(
                   sampling.temperature,
@@ -183,7 +186,7 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
   }
 
   private fun readInfo(h: Long): ModelInfo {
-    val longs = LongArray(6)
+    val longs = LongArray(7)
     val strings = arrayOfNulls<ByteArray>(3)
     NativeBridge.nativeModelInfo(h, longs, strings)
     return ModelInfo(
@@ -196,6 +199,7 @@ class LlamaEngine(private val nativeLibDir: String) : InferenceEngine {
       nLayer = longs[4].toInt(),
       chatTemplate = strings[2]?.decodeToString(),
       supportsThinking = longs[5] != 0L,
+      supportsVision = longs[6] != 0L,
     )
   }
 }

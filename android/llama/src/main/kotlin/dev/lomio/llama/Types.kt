@@ -11,6 +11,8 @@ data class LoadParams(
   val useMmap: Boolean = true,
   /** Jinja chat template to use instead of the GGUF's own; null = the GGUF's. */
   val chatTemplate: String? = null,
+  /** Vision projector (mmproj GGUF) to load with the model; null = text only. */
+  val mmprojPath: String? = null,
 )
 
 /** Sampler settings for one generation. Defaults follow PocketPal / llama.cpp conventions. */
@@ -38,6 +40,11 @@ data class ChatMessage(
   val content: String,
   /** Reasoning of earlier assistant turns; passed to templates that support it. */
   val reasoning: String? = null,
+  /**
+   * Image files (JPEG/PNG paths) attached to this message, placed before its text. Ignored
+   * unless the model was loaded with a vision projector ([ModelInfo.supportsVision]).
+   */
+  val images: List<String> = emptyList(),
 )
 
 /** Metadata of a loaded model (from llama.cpp after load). */
@@ -52,6 +59,8 @@ data class ModelInfo(
   val chatTemplate: String?,
   /** True if the template supports an enable_thinking switch. */
   val supportsThinking: Boolean,
+  /** True if a vision projector is loaded, so [ChatMessage.images] are seen by the model. */
+  val supportsVision: Boolean = false,
 )
 
 /** Header metadata read straight from a GGUF file without loading weights. */

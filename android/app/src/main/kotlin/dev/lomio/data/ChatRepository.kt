@@ -65,7 +65,7 @@ object StatsCodec {
     }
 }
 
-fun MessageEntity.toUi(versionIndex: Int = 0, versionCount: Int = 1) =
+fun MessageEntity.toUi(versionIndex: Int = 0, versionCount: Int = 1, attachmentPath: (String) -> String = { it }) =
   UiMessage(
     id = id,
     role = role,
@@ -76,9 +76,17 @@ fun MessageEntity.toUi(versionIndex: Int = 0, versionCount: Int = 1) =
     createdAt = createdAt,
     versionIndex = versionIndex,
     versionCount = versionCount,
+    images = Attachments.decode(attachments).map(attachmentPath),
   )
 
-class ChatRepository(private val db: LomioDatabase, private val clock: () -> Long = System::currentTimeMillis) {
+/**
+ * @param attachmentPath maps an attachment file name (as stored in the DB) to its absolute path.
+ */
+class ChatRepository(
+  private val db: LomioDatabase,
+  val attachmentPath: (String) -> String = { it },
+  private val clock: () -> Long = System::currentTimeMillis,
+) {
   private val conversations = db.conversations()
   private val messages = db.messages()
   private val lastTimestamp = AtomicLong(0)
@@ -99,7 +107,7 @@ class ChatRepository(private val db: LomioDatabase, private val clock: () -> Lon
   /** The visible branch of the conversation, with version numbers. */
   fun observeMessages(conversationId: String): Flow<List<UiMessage>> =
     combine(messages.observe(conversationId), conversations.observe(conversationId)) { list, conv ->
-      MessageTree.visible(list, conv?.leafId).map { it.message.toUi(it.versionIndex, it.versionCount) }
+      MessageTree.visible(list, conv?.leafId).map { it.message.toUi(it.versionIndex, it.versionCount, attachmentPath) }
     }
 
   /** Every message of the conversation, all branches included. */
@@ -181,6 +189,7 @@ class ChatRepository(private val db: LomioDatabase, private val clock: () -> Lon
     status: MessageStatus = MessageStatus.COMPLETE,
     modelId: String? = null,
     parent: Parent = Parent.Leaf,
+    attachments: List<String> = emptyList(),
   ): MessageEntity = db.withTransaction {
     val parentId =
       when (parent) {
@@ -197,6 +206,7 @@ class ChatRepository(private val db: LomioDatabase, private val clock: () -> Lon
         status = status,
         modelId = modelId,
         createdAt = now(),
+        attachments = Attachments.encode(attachments),
       )
     messages.upsert(m)
     conversations.touch(conversationId, m.createdAt, modelId)
@@ -213,4 +223,8 @@ class ChatRepository(private val db: LomioDatabase, private val clock: () -> Lon
   ) = messages.finish(id, content, reasoning?.takeIf { it.isNotEmpty() }, status, stats?.let(StatsCodec::encode))
 
   suspend fun recoverInterrupted(): Int = messages.markInterrupted()
+
+  /** File names of every attachment still referenced by a message. */
+  suspend fun referencedAttachments(): Set<String> =
+    messages.allAttachments().flatMap { Attachments.decode(it) }.toSet()
 }

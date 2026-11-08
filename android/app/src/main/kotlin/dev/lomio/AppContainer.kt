@@ -2,6 +2,7 @@ package dev.lomio
 
 import android.content.Context
 import androidx.datastore.preferences.preferencesDataStore
+import dev.lomio.data.AttachmentStore
 import dev.lomio.data.ChatRepository
 import dev.lomio.data.GgufReader
 import dev.lomio.data.ModelRepository
@@ -19,6 +20,7 @@ import dev.lomio.engine.ModelManager
 import dev.lomio.llama.Gguf
 import dev.lomio.llama.InferenceEngine
 import dev.lomio.llama.LlamaEngine
+import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +31,7 @@ private val Context.dataStore by preferencesDataStore(name = "settings")
 
 /** Manual DI: one instance per process, created by [LomioApp]. */
 class AppContainer(context: Context) {
-  private val appContext = context.applicationContext
+  val appContext: Context = context.applicationContext
 
   val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -49,13 +51,14 @@ class AppContainer(context: Context) {
   val downloadGate = DownloadGate()
 
   val models = ModelRepository(appContext, db, downloads, GgufReader { Gguf.read(it) })
-  val chats = ChatRepository(db)
   val storage =
     StorageRepository(
       modelsDir = { models.modelsDir },
       cacheDirs = { listOfNotNull(appContext.cacheDir, appContext.externalCacheDir) },
       databaseFiles = { listOf("lomio.db", "lomio.db-wal", "lomio.db-shm").map(appContext::getDatabasePath) },
     )
+  val attachments = AttachmentStore(File(appContext.filesDir, "attachments"))
+  val chats = ChatRepository(db, attachmentPath = { attachments.file(it).absolutePath })
 
   val engine: InferenceEngine = LlamaEngine(appContext.applicationInfo.nativeLibraryDir)
   val crashGuard = CrashGuard(appContext.getSharedPreferences("crash_guard", Context.MODE_PRIVATE))

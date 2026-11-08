@@ -9,10 +9,13 @@ import dev.lomio.domain.SettingsJson
 
 import dev.lomio.domain.GenerationSettings
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.lomio.AppContainer
 import dev.lomio.data.db.ModelState
+import dev.lomio.data.db.downloadBytes
+import dev.lomio.data.db.hasVision
 import dev.lomio.domain.ChatReducer
 import dev.lomio.engine.LoadOutcome
 import dev.lomio.llama.EngineState
@@ -34,7 +37,12 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
   private val scrollTarget = MutableStateFlow<String?>(null)
   private val loadError = MutableStateFlow<String?>(null)
   private val dismissedFailure = MutableStateFlow<EngineState.Failed?>(null)
-  private val local = combine(thinking, localError, loadError, dismissedFailure, ::Local)
+  /** Images picked for the next message (attachment file names). */
+  private val pending = MutableStateFlow<List<String>>(emptyList())
+  private val local =
+    combine(thinking, localError, loadError, dismissedFailure, pending) { think, err, loadErr, dismissed, images ->
+      Local(think, err, loadErr, dismissed, images)
+    }
 
   private val conversation =
     conversationId.flatMapLatest { id -> if (id == null) flowOf(null) else c.chats.observeConversation(id) }
@@ -64,7 +72,7 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
         modelBits,
         c.settings.settings,
         local,
-      ) { (id, conv, msgs), gen, bits, settings, (think, err, loadErr, dismissed) ->
+      ) { (id, conv, msgs), gen, bits, settings, (think, err, loadErr, dismissed, pendingImages) ->
         assertMainThread("Chat UI state")
         val ready = bits.models.filter { it.state == ModelState.READY }
         val active = ready.firstOrNull { it.id == bits.activeId }
@@ -80,7 +88,9 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
         val info =
           (bits.engine as? EngineState.Loaded)?.info ?: (bits.engine as? EngineState.Generating)?.info
         val pickers =
-          ready.map { PickerModel(it.id, it.displayName, it.quant, it.sizeBytes, it.id == bits.activeId) }
+          ready.map {
+            PickerModel(it.id, it.displayName, it.quant, it.downloadBytes, it.id == bits.activeId, vision = it.hasVision)
+          }
         ChatUiState(
           conversationId = id,
           title = conv?.title ?: "New chat",
@@ -92,6 +102,8 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
           lastModel = pickers.firstOrNull { it.id == settings.lastModelId } ?: pickers.firstOrNull(),
           showStats = settings.showStats,
           supportsThinking = info?.supportsThinking == true,
+          supportsVision = info?.supportsVision == true,
+          attachments = pendingImages.map(c.chats.attachmentPath),
           thinkingEnabled = think,
           systemPrompt = conv?.systemPrompt,
           crashedModelName = bits.crashedId?.let { cid -> bits.models.firstOrNull { it.id == cid }?.displayName ?: "the last model" },
@@ -133,8 +145,25 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
 
   fun send(text: String) {
     // Cheap synchronous checks first so a double tap can't create a second, empty chat.
-    if (text.isBlank() || c.chatService.isBusy) return
-    viewModelScope.launch { c.chatService.send(ensureConversation(), text, thinking.value) }
+    val images = pending.value
+    if ((text.isBlank() && images.isEmpty()) || c.chatService.isBusy) return
+    pending.value = emptyList()
+    viewModelScope.launch { c.chatService.send(ensureConversation(), text, thinking.value, images) }
+  }
+
+  /** Copies picked images into app storage and adds them to the next message. */
+  fun attach(uris: List<Uri>) =
+    viewModelScope.launch {
+      for (uri in uris.take((MAX_ATTACHMENTS - pending.value.size).coerceAtLeast(0))) {
+        runCatching { c.attachments.import(c.appContext.contentResolver, uri) }
+          .onSuccess { name -> pending.value = (pending.value + name).take(MAX_ATTACHMENTS) }
+          .onFailure { localError.value = it.message ?: "Couldn't attach the image" }
+      }
+    }
+
+  /** @param path absolute path as shown in [ChatUiState.attachments]. */
+  fun removeAttachment(path: String) {
+    pending.value = pending.value.filter { c.chats.attachmentPath(it) != path }
   }
 
   fun edit(messageId: String, text: String) {
@@ -225,7 +254,12 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
     val error: String?,
     val loadError: String?,
     val dismissed: EngineState.Failed?,
+    val pending: List<String>,
   )
+
+  companion object {
+    const val MAX_ATTACHMENTS = 4
+  }
 
   private data class ModelBits(
     val models: List<dev.lomio.data.db.ModelEntity>,

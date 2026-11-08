@@ -19,7 +19,10 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <functional>
+#include <map>
 #include <memory>
+#include <random>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -30,6 +33,8 @@
 #include "ggml-backend.h"
 #include "gguf.h"
 #include "llama.h"
+#include "mtmd-helper.h"
+#include "mtmd.h"
 #include "sampling.h"
 
 #define LOG_TAG "lomio-llama"
@@ -75,14 +80,68 @@ struct Session {
     llama_model *             model = nullptr;
     llama_context *           ctx   = nullptr;
     common_chat_templates_ptr tmpls;
-    std::vector<llama_token>  cached;  // tokens currently in the KV cache (seq 0)
+    mtmd::context_ptr         mtmd;  // vision projector (mmproj), null for text-only models
+
+    // What the KV cache (seq 0) holds, one entry per cell: text tokens, or negative
+    // placeholders (see image_entry) for the cells of an image. cached_pos[i] is the position of
+    // entry i (all cells of an image share the image's start position, so a cut never splits
+    // one); n_past is the position the next token goes to. Without images, pos == index.
+    std::vector<llama_token>  cached;
+    std::vector<llama_pos>    cached_pos;
+    llama_pos                 n_past = 0;
+
+    // Decoded images of the last turn, keyed by file path (re-tokenizing a chat re-uses them).
+    std::map<std::string, mtmd::bitmap_ptr> bitmaps;
+
+    void clear_cached() {
+        cached.clear();
+        cached_pos.clear();
+        n_past = 0;
+    }
+
+    // Keeps the first n entries of `cached` (no-op if there are fewer).
+    void truncate_cached(size_t n) {
+        if (n >= cached.size()) return;
+        n_past = cached_pos[n];
+        cached.resize(n);
+        cached_pos.resize(n);
+    }
 
     ~Session() {
         tmpls.reset();
+        bitmaps.clear();
+        mtmd.reset();
         if (ctx) llama_free(ctx);
         if (model) llama_model_free(model);
     }
 };
+
+// A tokenized prompt: text tokens plus image chunks, flattened to one entry per KV cell so it
+// can be compared with Session::cached for prefix reuse.
+struct Prompt {
+    std::vector<llama_token> tokens;  // image cells hold a negative per-image placeholder
+    std::vector<llama_pos>   pos;     // position of each entry (image cells: the image's start)
+    llama_pos                end_pos = 0;
+    mtmd::input_chunks_ptr   chunks;  // owns the image chunks below (null for text-only prompts)
+    std::map<size_t, const mtmd_input_chunk *> images;  // first entry index -> image chunk
+
+    size_t size() const { return tokens.size(); }
+    bool empty() const { return tokens.empty(); }
+
+    void add_text(llama_token t) {
+        tokens.push_back(t);
+        pos.push_back(end_pos++);
+    }
+};
+
+// Placeholder token for the cells of one image: negative (never a real token id) and derived
+// from the image's content hash, so the same picture in the same place matches across turns.
+llama_token image_entry(const char * id) {
+    const size_t h = std::hash<std::string>{}(id != nullptr ? id : "");
+    return -static_cast<llama_token>(h % 0x3FFFFFFF) - 2;
+}
+
+bool is_image_entry(llama_token t) { return t < -1; }
 
 // ---------------------------------------------------------------------------
 // JNI helpers
@@ -201,25 +260,54 @@ void log_callback(ggml_log_level level, const char * text, void * /*user*/) {
     __android_log_write(prio, "llama.cpp", text);
 }
 
-// Decodes tokens[from..] into seq 0, n_batch at a time; only the last token gets logits.
-// Returns 0 = ok, -100 = cancelled, otherwise llama_process's status. s->cached always matches
-// what is in the KV cache up to the last fully decoded batch, so a cancelled prompt keeps the
-// part that was already processed (issue #3). `on_batch(done)` runs after each batch.
+// Decodes prompt entries [from..] into seq 0: text n_batch tokens at a time, images through
+// libmtmd (encode with the projector, then decode the embeddings). Only the last token gets
+// logits. Returns 0 = ok, -100 = cancelled, otherwise the failing status. s->cached always
+// matches what is in the KV cache up to the last fully decoded batch or image, so a cancelled
+// prompt keeps the part that was already processed (issue #3). `on_batch(done)` runs after each
+// batch or image.
 template <typename F>
-int decode_prompt(Session * s, const std::vector<llama_token> & tokens, size_t from, F && on_batch) {
+int decode_prompt(Session * s, const Prompt & prompt, size_t from, F && on_batch) {
     const int n_batch = static_cast<int>(llama_n_batch(s->ctx));
+    const size_t n = prompt.size();
     common_batch batch(s->ctx);
-    for (size_t i = from; i < tokens.size(); i += n_batch) {
+    size_t i = from;
+    while (i < n) {
         if (is_cancelled()) return -100;
-        const size_t end = std::min(tokens.size(), i + static_cast<size_t>(n_batch));
-        batch.clear();
-        for (size_t j = i; j < end; ++j) {
-            batch.add(tokens[j], static_cast<llama_pos>(j), 0, j == tokens.size() - 1);
+        const auto img = prompt.images.find(i);
+        if (img != prompt.images.end()) {
+            const mtmd_input_chunk * chunk = img->second;
+            const size_t n_tok = mtmd_input_chunk_get_n_tokens(chunk);
+            llama_pos new_n_past = prompt.pos[i];
+            const int64_t t0 = now_us();
+            const int ret = mtmd_helper_eval_chunk_single(s->mtmd.get(), s->ctx, chunk, prompt.pos[i], 0, n_batch,
+                                                          /*logits_last=*/false, &new_n_past);
+            if (ret != 0) {
+                if (is_cancelled()) return -100;
+                LOGE("image eval failed: %d", ret);
+                return -2;  // not a KV-full status: reported as an error
+            }
+            LOGI("image: %zu tokens encoded and decoded in %lld ms", n_tok, static_cast<long long>((now_us() - t0) / 1000));
+            s->cached.insert(s->cached.end(), prompt.tokens.begin() + i, prompt.tokens.begin() + i + n_tok);
+            s->cached_pos.insert(s->cached_pos.end(), n_tok, prompt.pos[i]);
+            s->n_past = prompt.pos[i] + mtmd_input_chunk_get_n_pos(chunk);
+            i += n_tok;
+            on_batch(i);
+            continue;
         }
+        // Text up to n_batch tokens, stopping before the next image.
+        size_t end = std::min(n, i + static_cast<size_t>(n_batch));
+        const auto next_img = prompt.images.lower_bound(i);
+        if (next_img != prompt.images.end() && next_img->first < end) end = next_img->first;
+        batch.clear();
+        for (size_t j = i; j < end; ++j) batch.add(prompt.tokens[j], prompt.pos[j], 0, j == n - 1);
         const int ret = llama_process(s->ctx, LLAMA_PROCESS_TYPE_DECODE, batch.get());
         if (ret == 2) return -100;  // aborted by abort_callback (stop requested mid-batch)
         if (ret != 0) return ret;
-        s->cached.insert(s->cached.end(), tokens.begin() + i, tokens.begin() + end);
+        s->cached.insert(s->cached.end(), prompt.tokens.begin() + i, prompt.tokens.begin() + end);
+        s->cached_pos.insert(s->cached_pos.end(), prompt.pos.begin() + i, prompt.pos.begin() + end);
+        s->n_past = prompt.pos[end - 1] + 1;
+        i = end;
         on_batch(end);
     }
     return 0;
@@ -230,9 +318,119 @@ int decode_prompt(Session * s, const std::vector<llama_token> & tokens, size_t f
 // when the memory can't drop a tail (recurrent models) or after a real decode error.
 void settle_cache(Session * s, bool keep_prefix) {
     llama_memory_t mem = llama_get_memory(s->ctx);
-    if (keep_prefix && llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(s->cached.size()), -1)) return;
+    if (keep_prefix && llama_memory_seq_rm(mem, 0, s->n_past, -1)) return;
     llama_memory_clear(mem, true);
-    s->cached.clear();
+    s->clear_cached();
+}
+
+// Media marker put into the chat template for image K: "<__lomio_media_<nonce>_K__>". The
+// random nonce keeps user-typed text from ever matching it.
+const std::string & media_marker_prefix() {
+    static const std::string prefix = [] {
+        std::random_device rd;
+        return "<__lomio_media_" + std::to_string(rd() % 1000000) + "_";
+    }();
+    return prefix;
+}
+
+std::string media_marker(size_t k) { return media_marker_prefix() + std::to_string(k) + "__>"; }
+
+// Tokenizes a rendered chat prompt. Without images this is the plain per-part tokenization
+// (template text may contain special tokens, user input may not). With images, every media
+// marker is replaced by the image's chunk from libmtmd (which also adds the model's own
+// image begin/end tokens).
+Prompt tokenize_prompt(Session * s, const common_chat_prompt & rendered, const std::vector<std::string> & image_paths) {
+    const llama_vocab * vocab = llama_model_get_vocab(s->model);
+    Prompt out;
+    if (llama_vocab_get_add_bos(vocab)) out.add_text(llama_vocab_bos(vocab));
+
+    if (image_paths.empty() || !s->mtmd) {
+        for (const auto & part : rendered.parts) {
+            for (llama_token t : common_tokenize(vocab, part.text, /*add_special=*/false, /*parse_special=*/!part.is_input)) {
+                out.add_text(t);
+            }
+        }
+        return out;
+    }
+
+    // Split every part on the markers; keep the pieces alive for mtmd_tokenize_from_parts.
+    struct Piece { std::string text; bool special; int image = -1; };
+    std::vector<Piece> pieces;
+    const std::string & prefix = media_marker_prefix();
+    for (const auto & part : rendered.parts) {
+        size_t at = 0;
+        while (at <= part.text.size()) {
+            const size_t m = part.text.find(prefix, at);
+            const size_t close = m == std::string::npos ? std::string::npos : part.text.find("__>", m + prefix.size());
+            if (m == std::string::npos || close == std::string::npos) {
+                if (at < part.text.size()) pieces.push_back({part.text.substr(at), !part.is_input});
+                break;
+            }
+            if (m > at) pieces.push_back({part.text.substr(at, m - at), !part.is_input});
+            const std::string idx = part.text.substr(m + prefix.size(), close - m - prefix.size());
+            const bool numeric = !idx.empty() && idx.size() < 7 && idx.find_first_not_of("0123456789") == std::string::npos;
+            const int k = numeric ? std::stoi(idx) : -1;
+            if (k >= 0 && k < static_cast<int>(image_paths.size())) {
+                pieces.push_back({"", false, k});
+            } else {
+                pieces.push_back({part.text.substr(m, close + 3 - m), !part.is_input});
+            }
+            at = close + 3;
+        }
+    }
+
+    // Decode each picture once and keep it for the next turn.
+    std::map<std::string, mtmd::bitmap_ptr> keep;
+    for (const auto & p : pieces) {
+        if (p.image < 0) continue;
+        const std::string & path = image_paths[p.image];
+        if (keep.count(path)) continue;
+        auto it = s->bitmaps.find(path);
+        if (it != s->bitmaps.end()) {
+            keep.emplace(path, std::move(it->second));
+            continue;
+        }
+        mtmd_helper_bitmap_wrapper w =
+            mtmd_helper_bitmap_init_from_file(s->mtmd.get(), path.c_str(), false, mtmd_helper_init_opt_default());
+        if (w.video_ctx != nullptr) mtmd_helper_video_free(w.video_ctx);
+        if (w.bitmap == nullptr) throw JniError("can't read image: " + path);
+        keep.emplace(path, mtmd::bitmap_ptr(w.bitmap));
+    }
+    s->bitmaps = std::move(keep);
+
+    std::vector<mtmd_input_text> texts(pieces.size());
+    std::vector<mtmd_input_part> parts(pieces.size());
+    std::vector<const mtmd_input_part *> part_ptrs(pieces.size());
+    for (size_t i = 0; i < pieces.size(); ++i) {
+        if (pieces[i].image >= 0) {
+            parts[i] = {nullptr, s->bitmaps.at(image_paths[pieces[i].image]).get()};
+        } else {
+            texts[i] = {pieces[i].text.c_str(), pieces[i].text.size(), false, pieces[i].special};
+            parts[i] = {&texts[i], nullptr};
+        }
+        part_ptrs[i] = &parts[i];
+    }
+    out.chunks.reset(mtmd_input_chunks_init());
+    const int32_t res = mtmd_tokenize_from_parts(s->mtmd.get(), out.chunks.get(), part_ptrs.data(), part_ptrs.size(),
+                                                 /*add_special=*/false);
+    if (res != 0) throw JniError("image tokenization failed (" + std::to_string(res) + ")");
+
+    for (size_t c = 0, n_chunks = mtmd_input_chunks_size(out.chunks.get()); c < n_chunks; ++c) {
+        const mtmd_input_chunk * chunk = mtmd_input_chunks_get(out.chunks.get(), c);
+        if (mtmd_input_chunk_get_type(chunk) == MTMD_INPUT_CHUNK_TYPE_TEXT) {
+            size_t n_tok = 0;
+            const llama_token * toks = mtmd_input_chunk_get_tokens_text(chunk, &n_tok);
+            for (size_t j = 0; j < n_tok; ++j) out.add_text(toks[j]);
+        } else {
+            const size_t n_tok = mtmd_input_chunk_get_n_tokens(chunk);
+            const llama_token entry = image_entry(mtmd_input_chunk_get_id(chunk));
+            out.images.emplace(out.tokens.size(), chunk);
+            out.tokens.insert(out.tokens.end(), n_tok, entry);
+            out.pos.insert(out.pos.end(), n_tok, out.end_pos);
+            out.end_pos += mtmd_input_chunk_get_n_pos(chunk);
+        }
+    }
+    return out;
 }
 
 void read_gguf_int(const gguf_context * g, const std::string & key, jlong & out) {
@@ -286,6 +484,7 @@ extern "C" {
 JNI_FN(void, nativeInit)(JNIEnv * env, jobject, jbyteArray jlib_dir) {
     guarded<int>(env, 0, [&] {
         llama_log_set(log_callback, nullptr);
+        mtmd_helper_log_set(log_callback, nullptr);
         const std::string dir = bytes_to_string(env, jlib_dir);
         LOGI("loading ggml backends from %s", dir.c_str());
         ggml_backend_load_all_from_path(dir.c_str());
@@ -299,10 +498,12 @@ JNI_FN(jbyteArray, nativeSystemInfo)(JNIEnv * env, jobject) {
 }
 
 // jtemplate: optional Jinja chat template overriding the GGUF's (null = use the GGUF's).
+// jmmproj: path of the vision projector GGUF, or null for a text-only load.
 JNI_FN(jlong, nativeLoad)(JNIEnv * env, jobject, jbyteArray jpath, jint n_ctx, jint n_threads, jint n_batch,
-                         jint n_gpu_layers, jboolean use_mmap, jbyteArray jtemplate) {
+                         jint n_gpu_layers, jboolean use_mmap, jbyteArray jtemplate, jbyteArray jmmproj) {
     return guarded<jlong>(env, 0, [&]() -> jlong {
         const std::string path = bytes_to_string(env, jpath);
+        const std::string mmproj = bytes_to_string(env, jmmproj);
         auto s = std::make_unique<Session>();
 
         llama_model_params mp = llama_model_default_params();
@@ -315,6 +516,8 @@ JNI_FN(jlong, nativeLoad)(JNIEnv * env, jobject, jbyteArray jpath, jint n_ctx, j
         llama_context_params cp = llama_context_default_params();
         cp.n_ctx = n_ctx > 0 ? static_cast<uint32_t>(n_ctx) : 4096;
         cp.n_batch = n_batch > 0 ? static_cast<uint32_t>(n_batch) : 512;
+        // Some projectors (e.g. Gemma 3) need all of an image's tokens in one micro-batch.
+        if (!mmproj.empty()) cp.n_batch = std::max<uint32_t>(cp.n_batch, 512);
         cp.n_ubatch = std::min<uint32_t>(cp.n_batch, 512);
         cp.n_threads = threads;
         cp.n_threads_batch = threads;
@@ -357,7 +560,25 @@ JNI_FN(jlong, nativeLoad)(JNIEnv * env, jobject, jbyteArray jpath, jint n_ctx, j
                 s->tmpls = common_chat_templates_init(s->model, CHATML_TEMPLATE);
             }
         }
-        LOGI("model loaded: n_ctx=%u threads=%d", llama_n_ctx(s->ctx), threads);
+
+        // Vision projector. Its warm-up encode runs here too, under the crash-loop guard.
+        if (!mmproj.empty()) {
+            mtmd_context_params mparams = mtmd_context_params_default();
+            mparams.use_gpu = n_gpu_layers > 0;
+            mparams.n_threads = threads;
+            mparams.print_timings = false;
+            mparams.warmup = true;
+            const int64_t t0 = now_us();
+            s->mtmd.reset(mtmd_init_from_file(mmproj.c_str(), s->model, mparams));
+            if (!s->mtmd) throw JniError("failed to load the vision projector: " + mmproj);
+            if (!mtmd_support_vision(s->mtmd.get())) {
+                LOGW("projector %s has no vision input; ignoring it", mmproj.c_str());
+                s->mtmd.reset();
+            } else {
+                LOGI("vision projector loaded in %lld ms", static_cast<long long>((now_us() - t0) / 1000));
+            }
+        }
+        LOGI("model loaded: n_ctx=%u threads=%d vision=%d", llama_n_ctx(s->ctx), threads, s->mtmd ? 1 : 0);
         return reinterpret_cast<jlong>(s.release());
     });
 }
@@ -389,7 +610,7 @@ JNI_FN(void, nativeFree)(JNIEnv * env, jobject, jlong handle) {
     });
 }
 
-// longs: [nParams, sizeBytes, nCtxTrain, nCtx, nLayer, supportsThinking(0/1)]
+// longs: [nParams, sizeBytes, nCtxTrain, nCtx, nLayer, supportsThinking(0/1), supportsVision(0/1)]
 // strings: [description, architecture, chatTemplate]
 JNI_FN(void, nativeModelInfo)(JNIEnv * env, jobject, jlong handle, jlongArray jlongs, jobjectArray jstrings) {
     guarded<int>(env, 0, [&] {
@@ -398,15 +619,16 @@ JNI_FN(void, nativeModelInfo)(JNIEnv * env, jobject, jlong handle, jlongArray jl
         try {
             thinking = s->tmpls && common_chat_templates_support_enable_thinking(s->tmpls.get());
         } catch (...) {}
-        jlong vals[6] = {
+        jlong vals[7] = {
             static_cast<jlong>(llama_model_n_params(s->model)),
             static_cast<jlong>(llama_model_size(s->model)),
             llama_model_n_ctx_train(s->model),
             static_cast<jlong>(llama_n_ctx(s->ctx)),
             llama_model_n_layer(s->model),
             thinking ? 1 : 0,
+            s->mtmd ? 1 : 0,
         };
-        env->SetLongArrayRegion(jlongs, 0, 6, vals);
+        env->SetLongArrayRegion(jlongs, 0, 7, vals);
 
         char desc[256];
         llama_model_desc(s->model, desc, sizeof(desc));
@@ -477,8 +699,11 @@ JNI_FN(void, nativeStop)(JNIEnv *, jobject, jlong upto_op_id) {
 // while generating and exactly once more with the final parse, and
 // `void onPromptProgress(int done, int total)`, called before and after each prompt batch
 // (`done` counts tokens in the KV cache, reused prefix included).
+// images: image file paths of all messages in order; imageCounts[i]: how many belong to message i
+// (they go before its text). Ignored when the model was loaded without a vision projector.
 JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jroles, jobjectArray jcontents,
-                        jobjectArray jreasonings, jboolean enable_thinking, jfloatArray jfloats, jintArray jints,
+                        jobjectArray jreasonings, jobjectArray jimages, jintArray jimage_counts,
+                        jboolean enable_thinking, jfloatArray jfloats, jintArray jints,
                         jlong seed, jobjectArray jstops, jobject callback, jdoubleArray jstats, jlong op_id) {
     guarded<int>(env, 0, [&] {
         Session * s = as_session(handle);
@@ -492,12 +717,30 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
 
         // --- inputs -------------------------------------------------------------------
         std::vector<common_chat_msg> all_msgs;
+        std::vector<std::string> image_paths;  // index k <-> media_marker(k)
         const jsize n_msgs = env->GetArrayLength(jroles);
+        std::vector<jint> image_counts(static_cast<size_t>(n_msgs), 0);
+        if (env->GetArrayLength(jimage_counts) == n_msgs && n_msgs > 0) {
+            env->GetIntArrayRegion(jimage_counts, 0, n_msgs, image_counts.data());
+        }
+        jsize next_image = 0;
+        const jsize n_images = env->GetArrayLength(jimages);
         for (jsize i = 0; i < n_msgs; ++i) {
             common_chat_msg m;
             m.role = element_string(env, jroles, i);
             m.content = element_string(env, jcontents, i);
             m.reasoning_content = element_string(env, jreasonings, i);
+            if (image_counts[i] > 0 && s->mtmd) {
+                // Images first, then the text: the order most vision chat templates expect.
+                for (jint k = 0; k < image_counts[i] && next_image < n_images; ++k) {
+                    image_paths.push_back(element_string(env, jimages, next_image++));
+                    m.content_parts.push_back({"media_marker", media_marker(image_paths.size() - 1), ""});
+                }
+                if (!m.content.empty()) m.content_parts.push_back({"text", m.content, ""});
+                m.content.clear();
+            } else {
+                next_image += std::max<jint>(0, image_counts[i]);
+            }
             all_msgs.push_back(std::move(m));
         }
 
@@ -519,7 +762,7 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
         const size_t keep_head = (!all_msgs.empty() && all_msgs[0].role == "system") ? 1 : 0;
 
         std::unique_ptr<common_chat_session> chat;
-        std::vector<llama_token> prompt;
+        Prompt prompt;
         size_t drop = 0;
         for (;;) {
             common_chat_templates_inputs inputs;
@@ -537,13 +780,7 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
                 chat = std::make_unique<common_chat_session>(s->tmpls.get(), vocab, inputs);
             }
 
-            // tokenize: template text may contain special tokens, user input may not
-            prompt.clear();
-            if (llama_vocab_get_add_bos(vocab)) prompt.push_back(llama_vocab_bos(vocab));
-            for (const auto & part : chat->prompt().parts) {
-                auto toks = common_tokenize(vocab, part.text, /*add_special=*/false, /*parse_special=*/!part.is_input);
-                prompt.insert(prompt.end(), toks.begin(), toks.end());
-            }
+            prompt = tokenize_prompt(s, chat->prompt(), image_paths);
 
             const size_t remaining = all_msgs.size() - keep_head - drop;
             if (static_cast<int>(prompt.size()) + reserve <= n_ctx || remaining <= 1) break;
@@ -588,15 +825,22 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
 
         // --- KV cache prefix reuse ------------------------------------------------------
         size_t n_keep = 0;
-        while (n_keep < s->cached.size() && n_keep < prompt.size() && s->cached[n_keep] == prompt[n_keep]) ++n_keep;
+        while (n_keep < s->cached.size() && n_keep < prompt.size() && s->cached[n_keep] == prompt.tokens[n_keep] &&
+               s->cached_pos[n_keep] == prompt.pos[n_keep]) {
+            ++n_keep;
+        }
         if (n_keep == prompt.size()) --n_keep;  // always decode at least one token for fresh logits
+        // Never keep part of an image: back off to its first cell.
+        while (n_keep > 0 && is_image_entry(prompt.tokens[n_keep]) && prompt.tokens[n_keep - 1] == prompt.tokens[n_keep]) {
+            --n_keep;
+        }
         llama_memory_t mem = llama_get_memory(s->ctx);
         if (n_keep < s->cached.size()) {
-            if (!llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(n_keep), -1)) {
+            if (!llama_memory_seq_rm(mem, 0, s->cached_pos[n_keep], -1)) {
                 llama_memory_clear(mem, true);  // e.g. recurrent models can't drop a tail
                 n_keep = 0;
             }
-            s->cached.resize(n_keep);
+            s->truncate_cached(n_keep);
         }
         stats[1] = static_cast<double>(n_keep);
 
@@ -656,11 +900,11 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
         int n_gen = 0;
         int64_t t_first = 0, t_last_emit = 0;
         StopReason reason = STOP_EOS;
-        llama_pos pos = static_cast<llama_pos>(prompt.size());
+        llama_pos pos = s->n_past;
         for (;;) {
             if (is_cancelled()) { reason = STOP_CANCELLED; break; }
             if (max_tokens > 0 && n_gen >= max_tokens) { reason = STOP_MAX_TOKENS; break; }
-            if (pos >= n_ctx) { reason = STOP_CONTEXT_FULL; break; }
+            if (static_cast<int>(s->cached.size()) >= n_ctx) { reason = STOP_CONTEXT_FULL; break; }
 
             const llama_token tok = common_sampler_sample(smpl.get(), s->ctx, -1);
             common_sampler_accept(smpl.get(), tok, true);
@@ -694,7 +938,8 @@ JNI_FN(void, nativeChat)(JNIEnv * env, jobject, jlong handle, jobjectArray jrole
                 break;
             }
             s->cached.push_back(tok);
-            ++pos;
+            s->cached_pos.push_back(pos);
+            s->n_past = ++pos;
 
             const int64_t t = now_us();
             if (t - t_last_emit >= EMIT_INTERVAL_US) {
@@ -743,7 +988,7 @@ JNI_FN(jbyteArray, nativeBench)(JNIEnv * env, jobject, jlong handle, jint pp, ji
         const llama_token tok = llama_vocab_bos(llama_model_get_vocab(s->model)) >= 0
                                     ? llama_vocab_bos(llama_model_get_vocab(s->model)) : 0;
         llama_memory_t mem = llama_get_memory(s->ctx);
-        s->cached.clear();  // the bench overwrites the KV cache
+        s->clear_cached();  // the bench overwrites the KV cache
 
         common_batch batch(s->ctx);
         double pp_sum = 0, pp_sq = 0, tg_sum = 0, tg_sq = 0;

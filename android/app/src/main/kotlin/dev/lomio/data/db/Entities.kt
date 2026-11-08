@@ -41,7 +41,20 @@ data class ModelEntity(
   @ColumnInfo(name = "chat_template") val chatTemplate: String? = null,
   @ColumnInfo(name = "created_at") val createdAt: Long,
   @ColumnInfo(name = "last_used_at") val lastUsedAt: Long? = null,
+  // Vision projector (mmproj GGUF) downloaded with the model; null for text-only models.
+  @ColumnInfo(name = "mmproj_file") val mmprojFile: String? = null,
+  @ColumnInfo(name = "mmproj_path") val mmprojPath: String? = null,
+  @ColumnInfo(name = "mmproj_size") val mmprojSize: Long? = null,
+  @ColumnInfo(name = "mmproj_sha256") val mmprojSha256: String? = null,
 )
+
+/** True when the model comes with a vision projector (it may still be downloading). */
+val ModelEntity.hasVision: Boolean
+  get() = mmprojFile != null || mmprojPath != null
+
+/** Bytes to download: the model plus its projector. */
+val ModelEntity.downloadBytes: Long
+  get() = sizeBytes + (mmprojSize ?: 0)
 
 /**
  * Per-model defaults. JSON columns keep the schema migration-friendly while the settings set
@@ -124,6 +137,8 @@ data class MessageEntity(
   @ColumnInfo(name = "model_id") val modelId: String? = null,
   @ColumnInfo(name = "stats_json") val statsJson: String? = null,
   @ColumnInfo(name = "created_at") val createdAt: Long,
+  /** JSON array of image file names in the attachments directory (see AttachmentStore). */
+  val attachments: String? = null,
 )
 
 /** Full-text index over message content for drawer search (external content table). */

@@ -1,6 +1,12 @@
 package dev.lomio.ui.chat
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,7 +29,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Lightbulb
@@ -66,6 +74,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -94,6 +103,7 @@ data class PickerModel(
   val quant: String?,
   val sizeBytes: Long,
   val loaded: Boolean,
+  val vision: Boolean = false,
 )
 
 data class ChatUiState(
@@ -107,6 +117,10 @@ data class ChatUiState(
   val lastModel: PickerModel? = null,
   val showStats: Boolean = true,
   val supportsThinking: Boolean = false,
+  /** The loaded model has a vision projector: show the attach-image button. */
+  val supportsVision: Boolean = false,
+  /** Images picked for the next message (absolute paths). */
+  val attachments: List<String> = emptyList(),
   val thinkingEnabled: Boolean = true,
   val systemPrompt: String? = null,
   val crashedModelName: String? = null,
@@ -124,6 +138,8 @@ data class ChatUiState(
 class ChatActions(
   val onOpenDrawer: () -> Unit = {},
   val onSend: (String) -> Unit = {},
+  val onAttach: (List<Uri>) -> Unit = {},
+  val onRemoveAttachment: (String) -> Unit = {},
   val onStop: () -> Unit = {},
   val onLoadModel: (String) -> Unit = {},
   val onManageModels: () -> Unit = {},
@@ -159,6 +175,11 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
   var editingId by rememberSaveable { mutableStateOf<String?>(null) }
   var deleting by remember { mutableStateOf<UiMessage?>(null) }
   val snackbar = remember { SnackbarHostState() }
+  // System Photo Picker: no storage permission; we copy what the user picks.
+  val pickImages =
+    rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK)) { uris ->
+      if (uris.isNotEmpty()) actions.onAttach(uris)
+    }
 
   LaunchedEffect(state.error) {
     state.error?.let {
@@ -271,6 +292,12 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
         supportsThinking = state.supportsThinking,
         thinkingEnabled = state.thinkingEnabled,
         onToggleThinking = actions.onToggleThinking,
+        supportsVision = state.supportsVision,
+        attachments = state.attachments,
+        onAttach = {
+          pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        },
+        onRemoveAttachment = actions.onRemoveAttachment,
         onSend = {
           val id = editingId
           if (id != null) actions.onEdit(id, input) else actions.onSend(input)
@@ -426,6 +453,10 @@ private fun Composer(
   supportsThinking: Boolean,
   thinkingEnabled: Boolean,
   onToggleThinking: () -> Unit,
+  supportsVision: Boolean,
+  attachments: List<String>,
+  onAttach: () -> Unit,
+  onRemoveAttachment: (String) -> Unit,
   onSend: () -> Unit,
   onStop: () -> Unit,
 ) {
@@ -446,6 +477,14 @@ private fun Composer(
           TextButton(onClick = onCancelEdit) { Text("Cancel") }
         }
       }
+      if (attachments.isNotEmpty()) {
+        Row(
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          modifier = Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 8.dp),
+        ) {
+          attachments.forEachIndexed { i, path -> AttachmentChip(path, i + 1, onRemove = { onRemoveAttachment(path) }) }
+        }
+      }
       // The model is picked from the top bar only; the composer row holds per-message toggles.
       if (supportsThinking) {
         FilterChip(
@@ -456,6 +495,16 @@ private fun Composer(
         )
       }
       Row(verticalAlignment = Alignment.Bottom) {
+        if (supportsVision) {
+          IconButton(
+            onClick = onAttach,
+            enabled = !isGenerating && attachments.size < MAX_PICK,
+            modifier = Modifier.size(52.dp),
+          ) {
+            Icon(Icons.Outlined.AddPhotoAlternate, "Attach image")
+          }
+          Spacer(Modifier.size(4.dp))
+        }
         TextField(
           value = text,
           onValueChange = onTextChange,
@@ -482,7 +531,7 @@ private fun Composer(
         } else {
           FilledIconButton(
             onClick = onSend,
-            enabled = canSend && text.isNotBlank(),
+            enabled = canSend && (text.isNotBlank() || attachments.isNotEmpty()),
             modifier = Modifier.size(52.dp),
           ) {
             Icon(Icons.AutoMirrored.Filled.Send, "Send")
@@ -558,7 +607,7 @@ fun ModelPickerSheet(
           Column(Modifier.weight(1f)) {
             Text(m.name, style = MaterialTheme.typography.bodyLarge)
             Text(
-              listOfNotNull(m.quant, Format.bytes(m.sizeBytes)).joinToString(" · "),
+              listOfNotNull(m.quant, Format.bytes(m.sizeBytes), "Vision".takeIf { m.vision }).joinToString(" · "),
               style = MaterialTheme.typography.bodySmall,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -569,6 +618,30 @@ fun ModelPickerSheet(
         }
       }
       TextButton(onClick = onManage, modifier = Modifier.padding(horizontal = 16.dp)) { Text("Manage models") }
+    }
+  }
+}
+
+/** Most images per message (the Photo Picker enforces it too). */
+private const val MAX_PICK = 4
+
+/** Thumbnail of an image waiting to be sent, with a remove button. */
+@Composable
+private fun AttachmentChip(path: String, number: Int, onRemove: () -> Unit) {
+  Box(Modifier.size(64.dp)) {
+    AttachmentImage(
+      path,
+      contentDescription = "Attached image $number",
+      modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+      crop = true,
+    )
+    Surface(
+      shape = CircleShape,
+      color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.8f),
+      contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+      modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(24.dp).clip(CircleShape).clickable(onClick = onRemove),
+    ) {
+      Icon(Icons.Outlined.Close, "Remove image $number", Modifier.padding(4.dp))
     }
   }
 }

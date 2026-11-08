@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -100,23 +101,39 @@ fun UserMessage(message: UiMessage, actions: MessageActions, modifier: Modifier 
     val bubbleMaxWidth = maxWidth * 0.85f
     Column(horizontalAlignment = Alignment.End) {
       Box {
-        Surface(
-          color = MaterialTheme.colorScheme.secondaryContainer,
-          shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
-          modifier =
-            Modifier.widthIn(max = bubbleMaxWidth)
-              .clip(RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp))
-              .combinedClickable(
-                onClick = {},
-                onLongClick = { menu = true },
-                onLongClickLabel = "Message options",
-              ),
-        ) {
-          Text(
-            message.content,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-          )
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+          // Attached images sit above the text bubble, right-aligned like it.
+          message.images.forEachIndexed { i, path ->
+            AttachmentImage(
+              path,
+              contentDescription = "Attached image ${i + 1}",
+              modifier =
+                Modifier.widthIn(max = minOf(bubbleMaxWidth, 240.dp))
+                  .heightIn(max = 240.dp)
+                  .clip(RoundedCornerShape(16.dp))
+                  .combinedClickable(onClick = {}, onLongClick = { menu = true }, onLongClickLabel = "Message options"),
+            )
+          }
+          if (message.content.isNotEmpty() || message.images.isEmpty()) {
+            Surface(
+              color = MaterialTheme.colorScheme.secondaryContainer,
+              shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
+              modifier =
+                Modifier.widthIn(max = bubbleMaxWidth)
+                  .clip(RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp))
+                  .combinedClickable(
+                    onClick = {},
+                    onLongClick = { menu = true },
+                    onLongClickLabel = "Message options",
+                  ),
+            ) {
+              Text(
+                message.content,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+              )
+            }
+          }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
           MenuItem("Edit", Icons.Outlined.Edit) { menu = false; actions.onEdit() }

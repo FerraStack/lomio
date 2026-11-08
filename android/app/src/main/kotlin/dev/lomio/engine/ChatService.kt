@@ -1,5 +1,6 @@
 package dev.lomio.engine
 
+import dev.lomio.data.Attachments
 import dev.lomio.data.ChatRepository
 import dev.lomio.data.ModelRepository
 import dev.lomio.data.db.MessageRole
@@ -17,6 +18,7 @@ import dev.lomio.llama.ChatMessage
 import dev.lomio.llama.EngineState
 import dev.lomio.llama.GenerationEvent
 import dev.lomio.llama.InferenceEngine
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -76,16 +78,22 @@ class ChatService(
     return true
   }
 
-  fun send(conversationId: String, text: String, enableThinking: Boolean = true): Boolean {
+  /** @param attachments image file names from the attachment store, sent before the text. */
+  fun send(
+    conversationId: String,
+    text: String,
+    enableThinking: Boolean = true,
+    attachments: List<String> = emptyList(),
+  ): Boolean {
     val trimmed = text.trim()
-    if (trimmed.isEmpty()) return false
+    if (trimmed.isEmpty() && attachments.isEmpty()) return false
     return launchTurn {
       val modelId = activeModelId() ?: return@launchTurn dispatch(GenEvent.Failed(null, "Load a model first"))
       val conversation = chats.conversation(conversationId) ?: return@launchTurn
       val isFirst = chats.messages(conversationId).none { it.role == MessageRole.USER }
-      chats.addMessage(conversationId, MessageRole.USER, trimmed)
+      chats.addMessage(conversationId, MessageRole.USER, trimmed, attachments = attachments)
       if (isFirst && conversation.title == "New chat") {
-        chats.rename(conversationId, Titles.fromFirstMessage(trimmed))
+        chats.rename(conversationId, Titles.fromFirstMessage(trimmed.ifEmpty { "Image" }))
       }
       generate(conversationId, modelId, enableThinking)
     }
@@ -105,15 +113,22 @@ class ChatService(
       generate(conversationId, modelId, enableThinking, anchor ?: return@launchTurn)
     }
 
-  /** Edit: adds the new text as another version of the question and answers it. */
+  /** Edit: adds the new text (keeping the question's images) as another version and answers it. */
   fun edit(conversationId: String, messageId: String, newText: String, enableThinking: Boolean = true): Boolean {
-    if (newText.isBlank()) return false
     return launchTurn {
       // Check the model before touching history: without one, the edit would be left unanswered.
       val modelId = activeModelId() ?: return@launchTurn dispatch(GenEvent.Failed(null, "Load a model first"))
       val original = chats.message(messageId) ?: return@launchTurn
+      val images = Attachments.decode(original.attachments)
+      if (newText.isBlank() && images.isEmpty()) return@launchTurn
       val edited =
-        chats.addMessage(conversationId, MessageRole.USER, newText.trim(), parent = ChatRepository.Parent.Of(original.parentId))
+        chats.addMessage(
+          conversationId,
+          MessageRole.USER,
+          newText.trim(),
+          parent = ChatRepository.Parent.Of(original.parentId),
+          attachments = images,
+        )
       generate(conversationId, modelId, enableThinking, edited.id)
     }
   }
@@ -141,14 +156,22 @@ class ChatService(
     val systemPrompt =
       SettingsResolver.systemPrompt(app.systemPrompt, modelSettings?.systemPrompt, conversation.systemPrompt)
 
+    val info = (engine.state.value as? EngineState.Loaded)?.info
+    // Images only reach a model loaded with its vision projector; otherwise the text goes alone.
+    val vision = info?.supportsVision == true
     val fullHistory = buildList {
       if (systemPrompt.isNotBlank()) add(ChatMessage("system", systemPrompt))
       (if (parentId != null) chats.pathTo(conversationId, parentId) else chats.messages(conversationId))
-        .filter { it.role != MessageRole.SYSTEM && it.content.isNotEmpty() && it.status != MessageStatus.ERROR }
-        .forEach { add(ChatMessage(it.role.wire, it.content, it.reasoning)) }
+        .filter { it.role != MessageRole.SYSTEM && it.status != MessageStatus.ERROR }
+        .forEach { m ->
+          val images =
+            if (vision) Attachments.decode(m.attachments).map(chats.attachmentPath).filter { File(it).exists() }
+            else emptyList()
+          if (m.content.isNotEmpty() || images.isNotEmpty()) add(ChatMessage(m.role.wire, m.content, m.reasoning, images))
+        }
     }
     val sampling = gen.toSamplingParams()
-    val nCtx = (engine.state.value as? EngineState.Loaded)?.info?.nCtx ?: 4096
+    val nCtx = info?.nCtx ?: 4096
     val history = ContextWindow.trim(fullHistory, nCtx, sampling.maxTokens)
 
     val assistant =

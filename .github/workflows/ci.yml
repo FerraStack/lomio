@@ -100,12 +100,19 @@ jobs:
     needs: android
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       # llama2.c stories15M (MIT), 21 MB, Q4_K_M; trained with a 256-token context.
       E2E_MODEL_URL: https://huggingface.co/mradermacher/llama2.c-stories15M-GGUF/resolve/main/llama2.c-stories15M.Q4_K_M.gguf
       E2E_MODEL_SHA256: 212ddc793f14a6f0c90e6c2a8a22dc8138bc6535f4c468fe94954aa4ac7de509
       E2E_MODEL: models/e2e-model.gguf
+      # Smallest vision model llama.cpp supports well: SmolVLM-256M (Apache-2.0), Q8_0 weights
+      # 175 MB + Q8_0 projector 104 MB, pinned to a commit of ggml-org's repo.
+      E2E_VISION_BASE: https://huggingface.co/ggml-org/SmolVLM-256M-Instruct-GGUF/resolve/b9e4379657e1450d04d02eec8e345667265b0a00
+      E2E_VISION_MODEL_SHA256: 2a31195d3769c0b0fd0a4906201666108834848db768af11de1d2cef7cd35e65
+      E2E_VISION_MMPROJ_SHA256: 7e943f7c53f0382a6fc41b6ee0c2def63ba4fded9ab8ed039cc9e2ab905e0edd
+      E2E_VISION_MODEL: models/e2e-vision.gguf
+      E2E_VISION_MMPROJ: models/e2e-vision-mmproj.gguf
     steps:
       - uses: actions/checkout@v7
 
@@ -114,19 +121,24 @@ jobs:
           name: lomio-debug-apk
           path: apk
 
-      - name: Cache tiny GGUF
+      - name: Cache tiny GGUFs
         uses: actions/cache@v6
         with:
           path: models
-          key: e2e-model-${{ env.E2E_MODEL_SHA256 }}
+          key: e2e-models-${{ env.E2E_MODEL_SHA256 }}-${{ env.E2E_VISION_MODEL_SHA256 }}-${{ env.E2E_VISION_MMPROJ_SHA256 }}
 
-      - name: Download tiny GGUF
+      - name: Download tiny GGUFs
         run: |
           mkdir -p models
-          if ! echo "$E2E_MODEL_SHA256  $E2E_MODEL" | sha256sum -c --status 2>/dev/null; then
-            curl -fsSL --retry 3 -o "$E2E_MODEL" "$E2E_MODEL_URL"
-            echo "$E2E_MODEL_SHA256  $E2E_MODEL" | sha256sum -c
-          fi
+          fetch() { # url sha256 dest
+            if ! echo "$2  $3" | sha256sum -c --status 2>/dev/null; then
+              curl -fsSL --retry 3 -o "$3" "$1"
+              echo "$2  $3" | sha256sum -c
+            fi
+          }
+          fetch "$E2E_MODEL_URL" "$E2E_MODEL_SHA256" "$E2E_MODEL"
+          fetch "$E2E_VISION_BASE/SmolVLM-256M-Instruct-Q8_0.gguf" "$E2E_VISION_MODEL_SHA256" "$E2E_VISION_MODEL"
+          fetch "$E2E_VISION_BASE/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf" "$E2E_VISION_MMPROJ_SHA256" "$E2E_VISION_MMPROJ"
 
       - name: Enable KVM
         run: |

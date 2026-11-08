@@ -74,43 +74,66 @@ class DownloadRunner(private val c: AppContainer) {
         model = model.copy(hfRevision = hf.commitSha(repo))
         dao.upsert(model)
       }
-      val url = hf.downloadUrl(repo, path, model.hfRevision!!)
-
-      val partial = c.downloader.partFile(dest).length()
-      val remaining = (model.sizeBytes - partial).coerceAtLeast(0)
+      // The weights, then the vision projector if the repo has one (same commit). A piece whose
+      // file is already complete (e.g. a retry after the projector failed) is skipped.
+      val projectorDest = model.mmprojFile?.let { File(model.mmprojPath ?: c.models.hfDestination(repo, it).absolutePath) }
+      val pieces =
+        listOfNotNull(
+          Piece(path, dest, model.sizeBytes, model.sha256),
+          model.mmprojFile?.let { Piece(it, projectorDest!!, model.mmprojSize ?: 0, model.mmprojSha256) },
+        )
+      val total = pieces.sumOf { it.size }
+      val alreadyDone = pieces.sumOf { it.onDisk() }
+      val remaining = (total - alreadyDone).coerceAtLeast(0)
       dest.parentFile?.mkdirs()
       val free = dest.parentFile?.usableSpace ?: Long.MAX_VALUE
       if (remaining + STORAGE_MARGIN_BYTES > free) {
         throw InsufficientStorageException(remaining + STORAGE_MARGIN_BYTES, free)
       }
 
-      dao.updateProgress(modelId, ModelState.DOWNLOADING, partial, model.errorMessage?.takeIf { it == NO_NOTIFICATION })
-      onProgress(model.displayName, partial, model.sizeBytes)
+      dao.updateProgress(modelId, ModelState.DOWNLOADING, alreadyDone, model.errorMessage?.takeIf { it == NO_NOTIFICATION })
+      onProgress(model.displayName, alreadyDone, total)
 
       var lastDbWrite = 0L
       var lastPercent = -1
-      c.downloader.download(
-        url = url,
-        dest = dest,
-        expectedSize = model.sizeBytes.takeIf { it > 0 },
-        expectedSha256 = model.sha256,
-        headers = hf.authHeaders(url, token),
-        progressIntervalMs = 500,
-      ) { done, total ->
-        val now = System.currentTimeMillis()
-        if (now - lastDbWrite > 1_000) {
-          lastDbWrite = now
-          dao.updateProgress(modelId, ModelState.DOWNLOADING, done, dao.get(modelId)?.errorMessage)
+      var finished = 0L // bytes of the pieces before the current one
+      for (piece in pieces) {
+        if (piece.complete()) {
+          finished += piece.size
+          continue
         }
-        val percent = if (total > 0) (done * 100 / total).toInt() else 0
-        if (percent != lastPercent) {
-          lastPercent = percent
-          onProgress(model.displayName, done, total)
+        val url = hf.downloadUrl(repo, piece.repoPath, model.hfRevision!!)
+        c.downloader.download(
+          url = url,
+          dest = piece.dest,
+          expectedSize = piece.size.takeIf { it > 0 },
+          expectedSha256 = piece.sha256,
+          headers = hf.authHeaders(url, token),
+          progressIntervalMs = 500,
+        ) { pieceDone, _ ->
+          val done = finished + pieceDone
+          val now = System.currentTimeMillis()
+          if (now - lastDbWrite > 1_000) {
+            lastDbWrite = now
+            dao.updateProgress(modelId, ModelState.DOWNLOADING, done, dao.get(modelId)?.errorMessage)
+          }
+          val percent = if (total > 0) (done * 100 / total).toInt() else 0
+          if (percent != lastPercent) {
+            lastPercent = percent
+            onProgress(model.displayName, done, total)
+          }
         }
+        finished += piece.size.takeIf { it > 0 } ?: piece.dest.length()
       }
       val ready =
         c.models.withMetadata(
-          model.copy(state = ModelState.READY, bytesDone = dest.length(), filePath = dest.absolutePath, errorMessage = null),
+          model.copy(
+            state = ModelState.READY,
+            bytesDone = finished,
+            filePath = dest.absolutePath,
+            mmprojPath = projectorDest?.absolutePath,
+            errorMessage = null,
+          ),
           dest,
         )
       dao.upsert(ready)
@@ -137,10 +160,25 @@ class DownloadRunner(private val c: AppContainer) {
     }
   }
 
+  /** One file of a model download: the weights or the vision projector. */
+  private class Piece(val repoPath: String, val dest: File, val size: Long, val sha256: String?)
+
+  private fun Piece.complete() = dest.exists() && (size <= 0 || dest.length() == size)
+
+  /** Bytes of this piece already on disk (finished file or partial download). */
+  private fun Piece.onDisk() = if (complete()) dest.length() else c.downloader.partFile(dest).length()
+
   /** Best-effort state write that never throws (the DB itself may be the problem, e.g. disk full). */
   private suspend fun settle(modelId: String, dest: File, state: ModelState, message: String?) {
     withContext(NonCancellable) {
-      runCatching { c.db.models().updateProgress(modelId, state, c.downloader.partFile(dest).length(), message) }
+      runCatching {
+        val dao = c.db.models()
+        val m = dao.get(modelId)
+        // Bytes on disk over both pieces: e.g. finished weights plus the projector's part file.
+        var done = Piece("", dest, m?.sizeBytes ?: 0, null).onDisk()
+        m?.mmprojPath?.let { done += Piece("", File(it), m.mmprojSize ?: 0, null).onDisk() }
+        dao.updateProgress(modelId, state, done, message)
+      }
     }
   }
 

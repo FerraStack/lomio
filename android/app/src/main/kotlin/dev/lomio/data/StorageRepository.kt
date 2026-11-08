@@ -50,12 +50,21 @@ class StorageRepository(
         val path = m.filePath
         val file = path?.let(::File)
         val part = path?.let { File("$it.part") }
-        sizes[m.id] =
+        // A vision model's projector counts as part of the model.
+        val projector = m.mmprojPath?.let(::File)
+        val projectorBytes =
           when {
-            file?.isFile == true -> file.length()
-            part?.isFile == true -> part.length()
-            else -> 0L
+            projector == null -> 0L
+            projector.isFile -> projector.length()
+            else -> File("${projector.path}.part").takeIf { it.isFile }?.length() ?: 0L
           }
+        sizes[m.id] =
+          projectorBytes +
+            when {
+              file?.isFile == true -> file.length()
+              part?.isFile == true -> part.length()
+              else -> 0L
+            }
         if (m.state == ModelState.READY && file?.isFile != true) missing += m.id
       }
       StorageScan(
@@ -103,7 +112,7 @@ class StorageRepository(
         .filter { it.isFile }
         .map { Storage.FileEntry(it.canonicalPath, it.length(), it.lastModified()) }
         .toList()
-    val referenced = models.mapNotNull { m -> m.filePath?.let { File(it).canonicalPath } }
+    val referenced = models.flatMap { m -> listOfNotNull(m.filePath, m.mmprojPath).map { File(it).canonicalPath } }
     return Storage.leftovers(files, referenced, clock())
   }
 

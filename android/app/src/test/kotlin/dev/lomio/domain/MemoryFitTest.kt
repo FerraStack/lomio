@@ -78,4 +78,13 @@ class MemoryFitTest {
     assertTrue(small!! in 512 until 32768)
     assertNull(MemoryFit.maxFittingContext(llama3b, gib, 2 * gib, 32768))
   }
+
+  @Test
+  fun visionProjectorCountsWithItsEncoderBuffers() {
+    val text = MemoryFit.estimate(llama3b, 4096)
+    val vision = MemoryFit.estimate(llama3b.copy(projectorBytes = 800L * 1024 * 1024), 4096)
+    assertEquals(0, text.projectorBytes)
+    assertEquals(1200L * 1024 * 1024, vision.projectorBytes)
+    assertEquals(text.totalBytes + vision.projectorBytes, vision.totalBytes)
+  }
 }

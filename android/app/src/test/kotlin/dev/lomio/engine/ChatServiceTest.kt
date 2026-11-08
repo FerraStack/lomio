@@ -91,6 +91,41 @@ class ChatServiceTest {
     assertEquals(MessageStatus.COMPLETE, msgs[1].status)
   }
 
+  private fun info(vision: Boolean) =
+    dev.lomio.llama.ModelInfo("fake", "llama", 1, 1, 8192, 4096, 16, null, false, supportsVision = vision)
+
+  @Test
+  fun imagesReachAVisionModelOnly() = runTest {
+    val img = tmp.newFile("cat.jpg")
+    chats = ChatRepository(db, attachmentPath = { File(tmp.root, it).path })
+    val s = service()
+    val c = chats.create("m1")
+
+    // Text-only model: the image stays in the chat but the model gets the text alone.
+    engine.state.value = EngineState.Loaded("/m", info(vision = false))
+    assertTrue(s.send(c.id, "What is this?", attachments = listOf("cat.jpg")))
+    s.awaitIdle()
+    assertEquals(listOf("cat.jpg"), dev.lomio.data.Attachments.decode(chats.messages(c.id)[0].attachments))
+    assertEquals(emptyList<String>(), engine.lastMessages.last().images)
+
+    // Vision model: the image path goes with the message, before the text.
+    engine.state.value = EngineState.Loaded("/m", info(vision = true))
+    assertTrue(s.regenerate(c.id))
+    s.awaitIdle()
+    val user = engine.lastMessages.last { it.role == "user" }
+    assertEquals("What is this?", user.content)
+    assertEquals(listOf(img.path), user.images)
+
+    // An image-only message is sent too (no text).
+    assertTrue(s.send(c.id, "", attachments = listOf("cat.jpg")))
+    s.awaitIdle()
+    val last = engine.lastMessages.last()
+    assertEquals("user", last.role)
+    assertEquals("", last.content)
+    assertEquals(listOf(img.path), last.images)
+    assertEquals(3, engine.chatCalls)
+  }
+
   @Test
   fun regenerateKeepsTheOldReplyAsAVersion() = runTest {
     val s = service()

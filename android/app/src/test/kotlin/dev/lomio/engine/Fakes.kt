@@ -25,12 +25,19 @@ class FakeEngine(var nCtx: Int = 4096) : InferenceEngine {
   var stopReason = StopReason.EOS
   var failWith: Throwable? = null
   var loadFailure: Throwable? = null
+  var lastLoadParams: LoadParams? = null
 
-  private fun info() = ModelInfo("fake 1B", "llama", 1_000_000_000, 600_000_000, 8192, nCtx, 16, null, false)
+  private fun info(vision: Boolean = false) =
+    ModelInfo("fake 1B", "llama", 1_000_000_000, 600_000_000, 8192, nCtx, 16, null, false, supportsVision = vision)
 
   override suspend fun load(path: String, params: LoadParams): ModelInfo {
     loadFailure?.let { throw it }
     loads += path
+    lastLoadParams = params
+    if (params.mmprojPath != null) {
+      nCtx = params.nCtx
+      return info(vision = true).also { state.value = EngineState.Loaded(path, it) }
+    }
     nCtx = params.nCtx
     return info().also { state.value = EngineState.Loaded(path, it) }
   }

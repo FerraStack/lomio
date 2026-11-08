@@ -192,6 +192,8 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
             ChatActions(
               onOpenDrawer = { openDrawer() },
               onSend = { chatVm.send(it) },
+              onAttach = chatVm::attach,
+              onRemoveAttachment = chatVm::removeAttachment,
               onStop = chatVm::stop,
               onLoadModel = { chatVm.loadModel(it) },
               onManageModels = { navigate(Screen.MODELS) },

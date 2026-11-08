@@ -18,6 +18,8 @@ data class UiMessage(
   /** Position among this message's versions (regenerated replies, edited questions). */
   val versionIndex: Int = 0,
   val versionCount: Int = 1,
+  /** Absolute paths of attached images (user messages). */
+  val images: List<String> = emptyList(),
 )
 
 /** State of the (at most one) running generation. */

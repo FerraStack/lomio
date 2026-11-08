@@ -40,6 +40,18 @@ val MIGRATION_1_2 =
     }
   }
 
+/** v3: vision projector columns on `model`, image attachments on `message`. */
+val MIGRATION_2_3 =
+  object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+      db.execSQL("ALTER TABLE `model` ADD COLUMN `mmproj_file` TEXT")
+      db.execSQL("ALTER TABLE `model` ADD COLUMN `mmproj_path` TEXT")
+      db.execSQL("ALTER TABLE `model` ADD COLUMN `mmproj_size` INTEGER")
+      db.execSQL("ALTER TABLE `model` ADD COLUMN `mmproj_sha256` TEXT")
+      db.execSQL("ALTER TABLE `message` ADD COLUMN `attachments` TEXT")
+    }
+  }
+
 class Converters {
   @TypeConverter fun modelSource(v: ModelSource): String = v.name
 
@@ -68,7 +80,7 @@ class Converters {
       MessageEntity::class,
       MessageFts::class,
     ],
-  version = 2,
+  version = 3,
   exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -80,8 +92,11 @@ abstract class LomioDatabase : RoomDatabase() {
   abstract fun messages(): MessageDao
 
   companion object {
+    /** Every migration, oldest first. */
+    val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+
     fun create(context: Context): LomioDatabase =
-      Room.databaseBuilder(context, LomioDatabase::class.java, "lomio.db").addMigrations(MIGRATION_1_2).build()
+      Room.databaseBuilder(context, LomioDatabase::class.java, "lomio.db").addMigrations(*MIGRATIONS).build()
 
     fun inMemory(context: Context): LomioDatabase =
       Room.inMemoryDatabaseBuilder(context, LomioDatabase::class.java)

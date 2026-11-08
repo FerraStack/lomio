@@ -6,7 +6,6 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.lomio.data.db.LomioDatabase
-import dev.lomio.data.db.MIGRATION_1_2
 import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -21,8 +20,8 @@ import org.junit.runner.RunWith
 
 /**
  * Builds a version-1 database from the committed schema JSON (the exact SQL Room 2.8 generated
- * for v1), fills it with a linear chat, migrates to v2 and opens it with Room, which validates
- * every table against the current entities.
+ * for v1), fills it with a linear chat, runs every migration (v2: message tree, v3: vision
+ * columns) and opens it with Room, which validates every table against the current entities.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {
@@ -64,7 +63,7 @@ class MigrationTest {
     createV1()
     val db =
       Room.databaseBuilder(context, LomioDatabase::class.java, name)
-        .addMigrations(MIGRATION_1_2)
+        .addMigrations(*LomioDatabase.MIGRATIONS)
         .allowMainThreadQueries()
         .build()
     try {
@@ -76,6 +75,8 @@ class MigrationTest {
       assertEquals(null, chats.conversation("c2")?.leafId)
       // Full-text search still works on migrated rows.
       assertEquals(4, chats.searchMessages("kyoto").first().size)
+      // v3: no projector and no attachments on old rows.
+      assertEquals(null, db.messages().get("m0")!!.attachments)
     } finally {
       db.close()
       context.deleteDatabase(name)

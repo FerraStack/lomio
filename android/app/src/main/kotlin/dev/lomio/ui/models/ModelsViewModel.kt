@@ -6,8 +6,11 @@ import androidx.lifecycle.viewModelScope
 import dev.lomio.AppContainer
 import dev.lomio.data.ModelRepository
 import dev.lomio.data.db.ModelSource
+import dev.lomio.data.db.downloadBytes
+import dev.lomio.data.db.hasVision
 import dev.lomio.data.hf.HfFile
 import dev.lomio.data.hf.HfSort
+import dev.lomio.data.hf.Projectors
 import dev.lomio.domain.MemoryFit
 import dev.lomio.domain.ModelShape
 import dev.lomio.engine.LoadOutcome
@@ -72,7 +75,8 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
                 name = m.displayName,
                 subtitle = if (m.source == ModelSource.HF) m.hfRepo.orEmpty() else "Imported file",
                 quant = m.quant,
-                sizeBytes = m.sizeBytes,
+                sizeBytes = m.downloadBytes,
+                vision = m.hasVision,
                 params = m.nParams,
                 contextLength = m.nCtxTrain,
                 arch = m.arch,
@@ -176,25 +180,26 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
   }
 
   fun openRepo(repo: String) {
-    _hf.update { it.copy(repo = repo, files = emptyList(), filesLoading = true, error = null) }
+    _hf.update { it.copy(repo = repo, files = emptyList(), projector = null, filesLoading = true, error = null) }
     viewModelScope.launch {
       runCatching { c.hfClient.ggufFiles(repo) }
         .onSuccess { files ->
           val mem = c.memory.current()
           val existing = c.models.all().mapNotNull { m -> m.hfFile?.let { m.hfRepo to it } }.toSet()
+          // A repo with an mmproj file is a vision model: the projector downloads with any quant.
+          val projector = Projectors.pick(files)
           _hf.update {
             it.copy(
               filesLoading = false,
+              projector = projector,
               files =
                 files.map { f ->
+                  val vision = projector != null && !f.isProjector
                   // Without the header we only know the size: estimate with weights + overhead.
-                  val fit =
-                    MemoryFit.verdict(
-                      MemoryFit.estimate(ModelShape(f.sizeBytes, null, null, null, null), DEFAULT_CTX),
-                      mem.availableBytes,
-                      mem.totalBytes,
-                    )
-                  HfFileRow(f, fit, (f.repo to f.path) in existing)
+                  val shape =
+                    ModelShape(f.sizeBytes, null, null, null, null, projectorBytes = if (vision) projector!!.sizeBytes else 0)
+                  val fit = MemoryFit.verdict(MemoryFit.estimate(shape, DEFAULT_CTX), mem.availableBytes, mem.totalBytes)
+                  HfFileRow(f, fit, (f.repo to f.path) in existing, vision = vision)
                 },
             )
           }
@@ -214,7 +219,9 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
 
   fun download(file: HfFile) =
     viewModelScope.launch {
-      runCatching { c.models.download(file) }
+      // Files from an open repo listing bring the repo's projector along (if any).
+      val projector = _hf.value.projector?.takeIf { it.repo == file.repo && !file.isProjector }
+      runCatching { c.models.download(file, projector) }
         .onSuccess {
           _hf.update { s -> s.copy(files = s.files.map { if (it.file == file) it.copy(alreadyAdded = true) else it }) }
           message.value = "Downloading ${file.fileName}"
