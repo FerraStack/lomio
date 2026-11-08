@@ -62,12 +62,12 @@ class ShortcutsEndToEndTest {
     }
     val shortcut = ShortcutManagerCompat.getDynamicShortcuts(app).single { it.id == Shortcuts.LAST_CHAT_ID }
     assertEquals("Trip to Lviv", shortcut.shortLabel.toString())
-    app.startActivity(shortcut.intent)
+    compose.activity.startActivity(shortcut.intent)
     // (The drawer, composed even when closed, lists titles; the message is only in the chat.)
     compose.waitUntil(10_000) { shown(QUESTION) }
 
     // The static "New chat" shortcut's intent (action only, like the launcher sends it).
-    app.startActivity(LaunchIntents.newChat(app).setAction(LaunchIntents.ACTION_NEW_CHAT))
+    compose.activity.startActivity(LaunchIntents.newChat(app).setAction(LaunchIntents.ACTION_NEW_CHAT))
     compose.waitUntil(10_000) { !shown(QUESTION) }
 
     // Quick Settings tile: add it, show it, click it.
@@ -77,14 +77,16 @@ class ShortcutsEndToEndTest {
     Thread.sleep(2_000)
     screenshot("e2e_8_qs_tile")
     shell("cmd statusbar collapse")
+    Thread.sleep(500) // let the activity resume after the shade closes
     // Back to the old chat first, so the tile visibly switches to a new one.
-    app.startActivity(LaunchIntents.openChat(app, chat.id))
+    compose.activity.startActivity(LaunchIntents.openChat(app, chat.id))
     compose.waitUntil(10_000) { shown(QUESTION) }
     shell("cmd statusbar click-tile $tile")
     compose.waitUntil(15_000) { !shown(QUESTION) }
     compose.waitUntil(5_000) { runCatching { composer.assertIsFocused() }.isSuccess }
     Thread.sleep(1_000) // let the keyboard finish sliding in
     screenshot("e2e_7_ask_lomio")
+    shell("cmd statusbar collapse")
     shell("cmd statusbar remove-tile $tile")
 
     runBlocking { c.chats.delete(chat.id) }
