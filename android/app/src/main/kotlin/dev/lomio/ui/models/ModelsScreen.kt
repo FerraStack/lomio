@@ -63,6 +63,7 @@ import dev.lomio.domain.Fit
 import dev.lomio.ui.components.Format
 import androidx.compose.ui.res.stringResource
 import dev.lomio.R
+import dev.lomio.data.download.DownloadRunner
 
 data class ModelCardState(
   val id: String,
@@ -333,8 +334,9 @@ fun ModelCard(m: ModelCardState, actions: ModelsActions) {
             else TextButton(onClick = { actions.onResume(m.id) }) { Text(stringResource(R.string.action_resume)) }
             TextButton(onClick = { actions.onDelete(m.id) }) { Text(stringResource(R.string.action_cancel)) }
           }
-          m.error?.takeIf { m.state != ModelState.PAUSED }?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+          m.error?.takeIf { m.state != ModelState.PAUSED }?.let { raw ->
+            val note = if (raw == DownloadRunner.NO_NOTIFICATION) stringResource(R.string.dl_no_notification) else raw
+            Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
           }
         }
         ModelState.ERROR -> {

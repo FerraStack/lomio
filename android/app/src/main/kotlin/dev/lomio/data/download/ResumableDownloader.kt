@@ -201,5 +201,5 @@ class ResumableDownloader(
   }
 }
 
-class InsufficientStorageException(needed: Long, free: Long) :
+class InsufficientStorageException(val needed: Long, val free: Long) :
   IOException("Not enough storage: needs ${needed / 1_000_000} MB, ${free / 1_000_000} MB free")

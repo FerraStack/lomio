@@ -19,6 +19,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import dev.lomio.ui.components.Format
 
 /**
  * At most [MAX] downloads transfer at once; the rest wait as QUEUED (issue #4). Five parallel
@@ -151,7 +152,7 @@ class DownloadRunner(private val c: AppContainer) {
       if (transient && attempt < MAX_ATTEMPTS) {
         // Network dropped for longer than the downloader's own retries: back off and resume
         // when connectivity returns.
-        settle(modelId, dest, ModelState.QUEUED, "Waiting for network… (${e.message})")
+        settle(modelId, dest, ModelState.QUEUED, c.text.getString(R.string.dl_waiting_network, e.message.orEmpty()))
         DownloadOutcome.RETRY
       } else {
         settle(modelId, dest, ModelState.ERROR, userMessage(e))
@@ -185,10 +186,10 @@ class DownloadRunner(private val c: AppContainer) {
   private fun userMessage(e: Throwable): String =
     when {
       e is HttpStatusException && (e.code == 401 || e.code == 403) ->
-        "Access denied (HTTP ${e.code}). Gated model? Add a Hugging Face token in Settings."
-      e is HttpStatusException && e.code == 404 -> "File not found on Hugging Face (HTTP 404)."
-      e is InsufficientStorageException -> e.message!!
-      e is ChecksumMismatchException -> "Downloaded file is corrupt (checksum mismatch). Try again."
+        c.text.getString(R.string.dl_access_denied, e.code)
+      e is HttpStatusException && e.code == 404 -> c.text.getString(R.string.dl_not_found)
+      e is InsufficientStorageException -> c.text.getString(R.string.err_no_space, Format.bytes(e.needed), Format.bytes(e.free))
+      e is ChecksumMismatchException -> c.text.getString(R.string.dl_corrupt)
       else -> e.message ?: e.javaClass.simpleName
     }
 
@@ -196,7 +197,10 @@ class DownloadRunner(private val c: AppContainer) {
     const val MAX_ATTEMPTS = 8
     /** Keep this much free space beyond the file itself. */
     const val STORAGE_MARGIN_BYTES = 300L * 1024 * 1024
-    /** Shown on the card when Android refused the foreground notification (API 31–33). */
+    /**
+     * Stored on the card when Android refused the foreground notification (API 31–33). A
+     * marker compared by value; the UI shows R.string.dl_no_notification instead.
+     */
     const val NO_NOTIFICATION =
       "Running without a notification, so Android may pause it while Lomio is in the background."
   }
@@ -209,7 +213,7 @@ object DownloadNotifications {
   fun build(context: Context, name: String?, done: Long, total: Long, pause: PendingIntent?): Notification {
     val nm = context.getSystemService(NotificationManager::class.java)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      nm.createNotificationChannel(NotificationChannel(CHANNEL, "Model downloads", NotificationManager.IMPORTANCE_LOW))
+      nm.createNotificationChannel(NotificationChannel(CHANNEL, context.getString(R.string.dl_channel), NotificationManager.IMPORTANCE_LOW))
     }
     val percent = if (total > 0) (done * 100 / total).toInt() else 0
     val open =
@@ -221,13 +225,13 @@ object DownloadNotifications {
       )
     return NotificationCompat.Builder(context, CHANNEL)
       .setSmallIcon(R.drawable.ic_stat_download)
-      .setContentTitle(if (name != null) "Downloading $name" else "Waiting to download")
-      .setContentText(if (name == null) "Starts when another download finishes" else if (total > 0) "$percent%" else "Starting…")
+      .setContentTitle(if (name != null) context.getString(R.string.dl_notification_title, name) else context.getString(R.string.dl_waiting_title))
+      .setContentText(if (name == null) context.getString(R.string.dl_waiting_text) else if (total > 0) "$percent%" else context.getString(R.string.dl_starting))
       .setProgress(100, percent, name == null || total <= 0)
       .setOngoing(true)
       .setOnlyAlertOnce(true)
       .setContentIntent(open)
-      .apply { if (pause != null) addAction(0, "Pause", pause) }
+      .apply { if (pause != null) addAction(0, context.getString(R.string.action_pause), pause) }
       .build()
   }
 }

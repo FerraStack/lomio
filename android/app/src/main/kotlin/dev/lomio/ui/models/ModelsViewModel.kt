@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import dev.lomio.R
+import dev.lomio.data.download.InsufficientStorageException
+import dev.lomio.ui.components.Format
 
 /**
  * Our own small starter list (RESEARCH.md §2.2: PocketPal's device-rules repo has no license).
@@ -227,7 +229,11 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
           _hf.update { s -> s.copy(files = s.files.map { if (it.file == file) it.copy(alreadyAdded = true) else it }) }
           message.value = c.text.getString(R.string.models_downloading_msg, file.fileName)
         }
-        .onFailure { message.value = it.message ?: c.text.getString(R.string.models_download_failed) }
+        .onFailure { e ->
+          message.value =
+            if (e is InsufficientStorageException) c.text.getString(R.string.err_no_space, Format.bytes(e.needed), Format.bytes(e.free))
+            else e.message ?: c.text.getString(R.string.models_download_failed)
+        }
     }
 
   companion object {

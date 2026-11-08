@@ -366,17 +366,17 @@ sealed interface TokenCheckState {
 @Composable
 private fun TokenTestRow(enabled: Boolean, state: TokenCheckState?, onTest: () -> Unit) {
   Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-    OutlinedButton(onClick = onTest, enabled = enabled && state != TokenCheckState.Checking) { Text("Test token") }
+    OutlinedButton(onClick = onTest, enabled = enabled && state != TokenCheckState.Checking) { Text(stringResource(R.string.token_test)) }
     Spacer(Modifier.size(12.dp))
     val (text, color, icon) =
       when (val s = state) {
         null -> Triple(null, MaterialTheme.colorScheme.onSurfaceVariant, null)
-        TokenCheckState.Checking -> Triple("Checking…", MaterialTheme.colorScheme.onSurfaceVariant, null)
+        TokenCheckState.Checking -> Triple(stringResource(R.string.token_checking), MaterialTheme.colorScheme.onSurfaceVariant, null)
         is TokenCheckState.Done ->
           when (val r = s.result) {
-            is TokenCheck.Valid -> Triple("Signed in as ${r.user}", MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
-            is TokenCheck.Rejected -> Triple("Hugging Face rejected this token", MaterialTheme.colorScheme.error, Icons.Outlined.ErrorOutline)
-            is TokenCheck.Unreachable -> Triple("Couldn't reach Hugging Face (${r.message})", MaterialTheme.colorScheme.error, Icons.Outlined.CloudOff)
+            is TokenCheck.Valid -> Triple(stringResource(R.string.token_valid, r.user), MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
+            is TokenCheck.Rejected -> Triple(stringResource(R.string.token_rejected), MaterialTheme.colorScheme.error, Icons.Outlined.ErrorOutline)
+            is TokenCheck.Unreachable -> Triple(stringResource(R.string.token_unreachable, r.message), MaterialTheme.colorScheme.error, Icons.Outlined.CloudOff)
           }
       }
     if (state == TokenCheckState.Checking) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
