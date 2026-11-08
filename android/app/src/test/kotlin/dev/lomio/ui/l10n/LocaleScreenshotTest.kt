@@ -1,5 +1,11 @@
 package dev.lomio.ui.l10n
 
+import dev.lomio.ui.onboarding.OnboardingActions
+import dev.lomio.ui.onboarding.OnboardingScreen
+import dev.lomio.ui.onboarding.OnboardingStep
+import dev.lomio.ui.onboarding.OnboardingUiState
+import dev.lomio.ui.onboarding.StarterDownload
+import dev.lomio.ui.onboarding.StarterOption
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -168,6 +174,38 @@ class LocaleScreenshotTest {
   @Test @Config(qualifiers = "+uk") fun ukStorage() = shoot("uk_storage", dark = true) { StorageScreen(storage, StorageActions()) }
 
   @Test @Config(qualifiers = "+uk") fun ukSettings() = shoot("uk_settings", dark = true) { SettingsScreen(AppSettings(), {}, {}) }
+
+  private val onboarding =
+    OnboardingUiState(
+      ramGb = 8,
+      options = RECOMMENDED.mapIndexed { i, r -> StarterOption(r, if (i < 3) Fit.FITS else Fit.TIGHT) },
+      selected = 2,
+    )
+
+  @Test @Config(qualifiers = "+ru") fun ruOnboardingWelcome() = shoot("ru_onboarding_1_welcome") { OnboardingScreen(onboarding, OnboardingActions()) }
+
+  @Test
+  @Config(qualifiers = "+ru")
+  fun ruOnboardingPick() = shoot("ru_onboarding_2_pick") { OnboardingScreen(onboarding.copy(step = OnboardingStep.PICK), OnboardingActions()) }
+
+  @Test
+  @Config(qualifiers = "+uk")
+  fun ukOnboardingPick() =
+    shoot("uk_onboarding_2_pick", dark = true) { OnboardingScreen(onboarding.copy(step = OnboardingStep.PICK), OnboardingActions()) }
+
+  @Test
+  @Config(qualifiers = "+uk")
+  fun ukOnboardingDownload() =
+    shoot("uk_onboarding_3_download") {
+      OnboardingScreen(
+        onboarding.copy(step = OnboardingStep.DOWNLOAD, download = StarterDownload.Running(1_150_000_000, 1_921_909_280)),
+        OnboardingActions(),
+      )
+    }
+
+  @Test
+  fun rtlOnboardingPick() =
+    shoot("rtl_onboarding_2_pick", rtl = true) { OnboardingScreen(onboarding.copy(step = OnboardingStep.PICK), OnboardingActions()) }
 
   @Test fun rtlChat() = shoot("rtl_chat", rtl = true) { ChatScreen(ruChat, ChatActions()) }
 

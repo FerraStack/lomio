@@ -497,4 +497,44 @@
         <item quantity="many">Все %1$d чатов уже есть</item>
         <item quantity="other">Все %1$d чата уже есть</item>
     </plurals>
+
+    <!-- Onboarding -->
+    <string name="onboarding_step">Шаг %1$d из %2$d</string>
+    <string name="onboarding_title">Чат с ИИ — приватно</string>
+    <string name="onboarding_subtitle">Lomio запускает открытые языковые модели прямо на вашем телефоне.</string>
+    <string name="onboarding_private_title">Приватность по умолчанию</string>
+    <string name="onboarding_private_body">Ваши чаты не покидают телефон. Без аккаунта и без аналитики.</string>
+    <string name="onboarding_offline_title">Работает офлайн</string>
+    <string name="onboarding_offline_body">После однократного скачивания модели интернет не нужен.</string>
+    <string name="onboarding_open_title">Открытые модели</string>
+    <string name="onboarding_open_body">Начните с небольшой, другие можно добавить из Hugging Face позже.</string>
+    <string name="onboarding_get_started">Начать</string>
+    <string name="onboarding_pick_title">Выберите первую модель</string>
+    <string name="onboarding_ram_gb">%1$d ГБ</string>
+    <string name="onboarding_pick_ram">В вашем телефоне %1$s памяти. Мы выбрали модель, которая на нём хорошо работает.</string>
+    <string name="onboarding_pick_note">Скачивается один раз через интернет (лучше по Wi‑Fi). Модели можно добавлять и удалять в любое время.</string>
+    <string name="onboarding_download_size">Скачать · %1$s</string>
+    <string name="onboarding_download">Скачать</string>
+    <string name="onboarding_skip">Пропустить</string>
+    <string name="onboarding_recommended">Рекомендуем</string>
+    <string name="onboarding_fit_fits">Подходит</string>
+    <string name="onboarding_fit_tight">Впритык</string>
+    <string name="onboarding_fit_too_big">Слишком большая</string>
+    <string name="onboarding_download_complete">Скачивание завершено</string>
+    <string name="onboarding_download_failed">Не удалось скачать</string>
+    <string name="onboarding_failed_title">Скачивание прервалось</string>
+    <string name="onboarding_failed_generic">Не удалось скачать</string>
+    <string name="onboarding_downloading_title">Скачиваем %1$s</string>
+    <string name="onboarding_ready_title">%1$s готова</string>
+    <string name="onboarding_ready_body">Дальше всё работает на вашем телефоне.</string>
+    <string name="onboarding_progress">%1$s из %2$s. Можно уйти с этого экрана — скачивание продолжится.</string>
+    <string name="onboarding_percent">%1$d\u00A0%%</string>
+    <string name="onboarding_starting">Начинаем…</string>
+    <string name="onboarding_loading">Загрузка…</string>
+    <string name="onboarding_start_chatting">Начать чат</string>
+    <string name="onboarding_try_again">Повторить</string>
+    <string name="onboarding_pick_another">Выбрать другую модель</string>
+    <string name="onboarding_continue_background">Продолжить в фоне</string>
+    <string name="onboarding_ready_title_generic">Модель готова</string>
+    <string name="onboarding_downloading_title_generic">Скачиваем модель</string>
 </resources>

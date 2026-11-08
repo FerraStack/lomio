@@ -50,6 +50,8 @@ class ShortcutsEndToEndTest {
   fun shortcutsAndTileOpenTheRightChat() {
     val c = app.container
     val chat = runBlocking {
+      // Don't depend on another test having added a model: with none, first-run screens would cover the chat.
+      c.settings.update { it.copy(onboardingDone = true) }
       c.chats.create(modelId = null, title = TITLE).also { conv ->
         c.chats.addMessage(conv.id, MessageRole.USER, QUESTION)
       }

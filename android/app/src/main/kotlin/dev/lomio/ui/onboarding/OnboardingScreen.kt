@@ -287,7 +287,7 @@ private fun OptionCard(o: StarterOption, selected: Boolean, recommended: Boolean
           )
         }
       }
-      Text(o.model.note, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+      Text(dev.lomio.ui.models.recommendedNote(o.model), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
       Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
         Text(
           "${Format.bytes(o.model.sizeBytes)} · ${o.model.quant}",
@@ -317,7 +317,7 @@ private fun FitTag(fit: Fit?) {
 
 @Composable
 private fun ColumnScope.Download(state: OnboardingUiState, actions: OnboardingActions) {
-  val name = state.options.getOrNull(state.selected)?.model?.title ?: stringResource(R.string.onboarding_your_model)
+  val name = state.options.getOrNull(state.selected)?.model?.title
   val d = state.download
   Column(
     Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
@@ -344,16 +344,19 @@ private fun ColumnScope.Download(state: OnboardingUiState, actions: OnboardingAc
             trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
             modifier = Modifier.size(160.dp),
           )
-          Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.headlineMedium)
+          Text(stringResource(R.string.onboarding_percent, (progress * 100).toInt()), style = MaterialTheme.typography.headlineMedium)
         }
       }
     }
     Spacer(Modifier.height(28.dp))
     Text(
       when (d) {
-        StarterDownload.Ready -> stringResource(R.string.onboarding_ready_title, name)
+        StarterDownload.Ready ->
+          if (name != null) stringResource(R.string.onboarding_ready_title, name) else stringResource(R.string.onboarding_ready_title_generic)
         is StarterDownload.Failed -> stringResource(R.string.onboarding_failed_title)
-        else -> stringResource(R.string.onboarding_downloading_title, name)
+        else ->
+          if (name != null) stringResource(R.string.onboarding_downloading_title, name)
+          else stringResource(R.string.onboarding_downloading_title_generic)
       },
       style = MaterialTheme.typography.headlineSmall,
       textAlign = TextAlign.Center,
