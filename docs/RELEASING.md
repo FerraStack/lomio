@@ -124,8 +124,11 @@ Things F-Droid checks, and where we stand:
 - **No proprietary dependencies.** The app uses AndroidX, Compose, Room, WorkManager, OkHttp,
   kotlinx and llama.cpp; no Google Play Services, Firebase or analytics. The Photo Picker is
   started through an intent, not a library.
-- **Native code built from source.** llama.cpp (MIT) and the Khronos OpenCL headers (Apache-2.0)
-  are git submodules, so nothing prebuilt is shipped. The OpenCL `libOpenCL.so` used for linking
+- **Native code built from source, no downloads during the build.** llama.cpp (MIT), Arm's
+  KleidiAI (Apache-2.0) and the Khronos OpenCL headers (Apache-2.0) are git submodules. ggml
+  would otherwise download a KleidiAI release archive at configure time; the build points it at
+  the submodule instead, and fails with a clear message if a llama.cpp update wants another
+  KleidiAI version. Nothing prebuilt is shipped. The OpenCL `libOpenCL.so` used for linking
   is a stub generated during the build and is never packaged; at runtime the phone's own driver
   is used. The OpenCL kernels are compiled at build time with Python 3.
 - **Network.** Downloads come only from huggingface.co, when the user asks. The optional local
