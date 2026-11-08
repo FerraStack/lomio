@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Summarize
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.DropdownMenu
@@ -442,3 +443,51 @@ fun statsText(s: GenerationStats): String =
     s.genTokensPerSec,
     s.timeToFirstTokenMs,
   )
+
+/**
+ * A "Summarize & continue" note: from here on the model sees this summary instead of the
+ * messages above it. Collapsed to a few lines; tap to expand.
+ */
+@Composable
+fun SummaryNote(message: UiMessage, modifier: Modifier = Modifier) {
+  var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
+  val streaming = message.status == MessageStatus.STREAMING
+  Surface(
+    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    shape = RoundedCornerShape(16.dp),
+    modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { expanded = !expanded },
+  ) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Outlined.Summarize, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.size(8.dp))
+        Text(
+          if (streaming) "Summarizing the conversation…" else "Conversation summarized",
+          style = MaterialTheme.typography.labelLarge,
+          color = MaterialTheme.colorScheme.primary,
+          modifier = Modifier.weight(1f),
+        )
+        if (!streaming) Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) "Collapse" else "Expand")
+      }
+      when {
+        message.content.isNotEmpty() ->
+          Text(
+            message.content,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = if (expanded || streaming) Int.MAX_VALUE else 3,
+            overflow = TextOverflow.Ellipsis,
+          )
+        streaming -> LinearProgressIndicator(Modifier.fillMaxWidth().clip(RoundedCornerShape(50)))
+      }
+      Text(
+        when (message.status) {
+          MessageStatus.ERROR -> "The summary failed; the model still sees the full chat."
+          MessageStatus.STOPPED -> "Stopped; the model still sees the full chat."
+          else -> "The model now sees this summary instead of the messages above."
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+  }
+}

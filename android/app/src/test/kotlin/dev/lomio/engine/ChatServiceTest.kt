@@ -15,6 +15,7 @@ import dev.lomio.data.db.ModelState
 import kotlinx.coroutines.runBlocking
 import dev.lomio.data.download.DownloadScheduler
 import dev.lomio.data.settings.SettingsRepository
+import dev.lomio.domain.ContextUsage
 import dev.lomio.domain.ContextWindow
 import dev.lomio.llama.EngineState
 import dev.lomio.llama.StopReason
@@ -161,6 +162,35 @@ class ChatServiceTest {
     assertEquals(1 to 2, shown[0].versionIndex to shown[0].versionCount)
     assertEquals(listOf("second question"), engine.lastMessages.filter { it.role == "user" }.map { it.content })
     assertEquals(4, chats.allMessages(c.id).size)
+  }
+
+  @Test
+  fun summarizeAndContinueReplacesEarlierTurnsWithANote() = runTest {
+    val s = service()
+    val c = chats.create("m1")
+    chats.addMessage(c.id, MessageRole.USER, "My cat is called Miso.")
+    chats.addMessage(c.id, MessageRole.ASSISTANT, "Nice name!")
+
+    assertTrue(s.summarize(c.id))
+    s.awaitIdle()
+    // The request is the chat plus the instruction (so it reuses the chat's KV cache).
+    assertEquals(ContextUsage.SUMMARY_INSTRUCTION, engine.lastMessages.last().content)
+    assertTrue(engine.lastMessages.any { it.content == "My cat is called Miso." })
+    val note = chats.messages(c.id).last()
+    assertEquals(MessageRole.SYSTEM, note.role)
+    assertEquals(MessageStatus.COMPLETE, note.status)
+    assertEquals("Hello", note.content) // FakeEngine's reply
+
+    // The next turn sees the note (inside the system message) instead of the earlier turns.
+    assertTrue(s.send(c.id, "What is my cat called?"))
+    s.awaitIdle()
+    val sent = engine.lastMessages
+    assertEquals("system", sent.first().role)
+    assertTrue(sent.first().content.endsWith(ContextUsage.SUMMARY_PREFIX + "Hello"))
+    assertEquals(listOf("system", "user"), sent.map { it.role })
+    assertEquals("What is my cat called?", sent.last().content)
+    // The earlier turns stay in the chat.
+    assertEquals(5, chats.messages(c.id).size)
   }
 
   @Test

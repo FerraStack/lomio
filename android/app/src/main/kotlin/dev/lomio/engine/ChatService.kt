@@ -7,6 +7,7 @@ import dev.lomio.data.db.MessageRole
 import dev.lomio.data.db.MessageStatus
 import dev.lomio.data.settings.SettingsRepository
 import dev.lomio.domain.ChatReducer
+import dev.lomio.domain.ContextUsage
 import dev.lomio.domain.ContextWindow
 import dev.lomio.domain.GenEvent
 import dev.lomio.domain.GenerationState
@@ -18,6 +19,7 @@ import dev.lomio.llama.ChatMessage
 import dev.lomio.llama.EngineState
 import dev.lomio.llama.GenerationEvent
 import dev.lomio.llama.InferenceEngine
+import dev.lomio.llama.SamplingParams
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
@@ -137,14 +139,32 @@ class ChatService(
     engine.stop()
   }
 
-  /** Generates a reply under [parentId] (default: the end of the visible branch). */
-  private suspend fun generate(
-    conversationId: String,
-    modelId: String,
-    enableThinking: Boolean,
-    parentId: String? = null,
-  ) {
-    val conversation = chats.conversation(conversationId) ?: return
+  /**
+   * "Summarize & continue": asks the model to summarize the visible branch so far and stores
+   * the result as a system note (a SYSTEM message at the end of the branch). From then on the
+   * model sees the note (with the system prompt) instead of the messages before it; those stay
+   * visible in the chat. The request is the chat plus one instruction, so it reuses the chat's
+   * KV cache.
+   */
+  fun summarize(conversationId: String): Boolean =
+    launchTurn {
+      val modelId = activeModelId() ?: return@launchTurn dispatch(GenEvent.Failed(null, "Load a model first"))
+      val ctx = context(conversationId, modelId, parentId = null) ?: return@launchTurn
+      if (ctx.history.none { it.role == "user" }) return@launchTurn
+      val request =
+        ContextWindow.trim(ctx.history + ChatMessage("user", ContextUsage.SUMMARY_INSTRUCTION), ctx.nCtx, SUMMARY_MAX_TOKENS)
+      val sampling = ctx.sampling.copy(temperature = 0.3f, maxTokens = SUMMARY_MAX_TOKENS, stop = emptyList())
+      val note = chats.addMessage(conversationId, MessageRole.SYSTEM, "", MessageStatus.STREAMING, modelId)
+      dispatch(GenEvent.Started(conversationId, note.id, note.createdAt, MessageRole.SYSTEM))
+      stream(conversationId, note.id, request, sampling, enableThinking = false, summary = true)
+    }
+
+  /** What a turn needs: sampling settings and the history as the model should see it. */
+  private class TurnContext(val history: List<ChatMessage>, val sampling: SamplingParams, val nCtx: Int)
+
+  /** History up to [parentId] (default: the end of the visible branch) as the model sees it. */
+  private suspend fun context(conversationId: String, modelId: String, parentId: String?): TurnContext? {
+    val conversation = chats.conversation(conversationId) ?: return null
     val app = settings.current()
     val modelSettings = models.settings(modelId)
     val gen =
@@ -159,9 +179,17 @@ class ChatService(
     val info = (engine.state.value as? EngineState.Loaded)?.info
     // Images only reach a model loaded with its vision projector; otherwise the text goes alone.
     val vision = info?.supportsVision == true
-    val fullHistory = buildList {
-      if (systemPrompt.isNotBlank()) add(ChatMessage("system", systemPrompt))
-      (if (parentId != null) chats.pathTo(conversationId, parentId) else chats.messages(conversationId))
+    val branch = if (parentId != null) chats.pathTo(conversationId, parentId) else chats.messages(conversationId)
+    // The latest finished summary on this branch replaces everything before it (summarize()).
+    val summaryAt = branch.indexOfLast { ContextUsage.isSummary(it.role, it.status, it.content) }
+    val summary = branch.getOrNull(summaryAt)?.content
+    val system =
+      listOfNotNull(systemPrompt.takeIf { it.isNotBlank() }, summary?.let { ContextUsage.SUMMARY_PREFIX + it })
+        .joinToString("\n\n")
+    val history = buildList {
+      if (system.isNotBlank()) add(ChatMessage("system", system))
+      branch
+        .drop(summaryAt + 1)
         .filter { it.role != MessageRole.SYSTEM && it.status != MessageStatus.ERROR }
         .forEach { m ->
           val images =
@@ -170,10 +198,18 @@ class ChatService(
           if (m.content.isNotEmpty() || images.isNotEmpty()) add(ChatMessage(m.role.wire, m.content, m.reasoning, images))
         }
     }
-    val sampling = gen.toSamplingParams()
-    val nCtx = info?.nCtx ?: 4096
-    val history = ContextWindow.trim(fullHistory, nCtx, sampling.maxTokens)
+    return TurnContext(history, gen.toSamplingParams(), info?.nCtx ?: 4096)
+  }
 
+  /** Generates a reply under [parentId] (default: the end of the visible branch). */
+  private suspend fun generate(
+    conversationId: String,
+    modelId: String,
+    enableThinking: Boolean,
+    parentId: String? = null,
+  ) {
+    val ctx = context(conversationId, modelId, parentId) ?: return
+    val history = ContextWindow.trim(ctx.history, ctx.nCtx, ctx.sampling.maxTokens)
     val assistant =
       chats.addMessage(
         conversationId,
@@ -184,7 +220,18 @@ class ChatService(
         parent = if (parentId != null) ChatRepository.Parent.Of(parentId) else ChatRepository.Parent.Leaf,
       )
     dispatch(GenEvent.Started(conversationId, assistant.id, assistant.createdAt))
+    stream(conversationId, assistant.id, history, ctx.sampling, enableThinking, summary = false)
+  }
 
+  /** Runs one generation into message [messageId] and settles it, whatever happens. */
+  private suspend fun stream(
+    conversationId: String,
+    messageId: String,
+    history: List<ChatMessage>,
+    sampling: SamplingParams,
+    enableThinking: Boolean,
+    summary: Boolean,
+  ) {
     var content = ""
     var reasoning = ""
     var settled = false
@@ -192,17 +239,19 @@ class ChatService(
       engine.chat(history, sampling, enableThinking, cacheKey = conversationId).collect { ev ->
         when (ev) {
           is GenerationEvent.PromptProgress ->
-            dispatch(GenEvent.PromptProgress(assistant.id, ev.done, ev.total))
+            dispatch(GenEvent.PromptProgress(messageId, ev.done, ev.total))
           is GenerationEvent.Update -> {
             content = ev.content
             reasoning = ev.reasoning
-            dispatch(GenEvent.Update(assistant.id, ev.content, ev.reasoning))
+            dispatch(GenEvent.Update(messageId, ev.content, ev.reasoning))
           }
           is GenerationEvent.Done -> {
-            content = ev.content
+            content = if (summary) ev.content.trim() else ev.content
             reasoning = ev.reasoning
-            chats.finishMessage(assistant.id, ev.content, ev.reasoning, statusFor(ev.stats.stopReason), ev.stats)
-            dispatch(GenEvent.Finished(assistant.id, ev.content, ev.reasoning, ev.stats))
+            // An empty summary must not count as one (the model would lose the history).
+            val status = if (summary && content.isEmpty()) MessageStatus.ERROR else statusFor(ev.stats.stopReason)
+            chats.finishMessage(messageId, content, ev.reasoning, status, ev.stats)
+            dispatch(GenEvent.Finished(messageId, content, ev.reasoning, ev.stats))
             settled = true
           }
         }
@@ -211,19 +260,23 @@ class ChatService(
       throw e
     } catch (e: Throwable) {
       withContext(NonCancellable) {
-        chats.finishMessage(assistant.id, content, reasoning, MessageStatus.ERROR, null)
+        chats.finishMessage(messageId, content, reasoning, MessageStatus.ERROR, null)
       }
-      dispatch(GenEvent.Failed(assistant.id, e.message ?: "Generation failed"))
+      dispatch(GenEvent.Failed(messageId, e.message ?: "Generation failed"))
       settled = true
     } finally {
       // Whatever happened (scope cancelled, engine closed the flow without Done), never leave
       // the message or the UI stuck in "generating".
       if (!settled) {
         withContext(NonCancellable) {
-          chats.finishMessage(assistant.id, content, reasoning, MessageStatus.STOPPED, null)
+          chats.finishMessage(messageId, content, reasoning, MessageStatus.STOPPED, null)
         }
-        dispatch(GenEvent.Failed(assistant.id, "Generation stopped"))
+        dispatch(GenEvent.Failed(messageId, "Generation stopped"))
       }
     }
+  }
+
+  private companion object {
+    const val SUMMARY_MAX_TOKENS = 400
   }
 }

@@ -42,7 +42,10 @@ stats line. arm64 phones are not tested yet:
     instead of re-processing the history. Caches are tied to the model file, the chat template
     and the llama.cpp build. A cache over 512 MB isn't kept, the least recently used caches go
     above 1 GB in total, and deleted chats' caches are removed on start.
-  - Long chats keep their newest turns to fit the context.
+  - Long chats keep their newest turns to fit the context. From 60% full, a small meter in the
+    top bar shows how full the context is. Tapping it (or More → Summarize & continue) asks
+    the model to summarize the chat into a short note. The model then sees the note instead of
+    the earlier messages, which stay visible.
   - Stop takes effect promptly, including during prompt processing, and keeps the part of the
     prompt that was already processed. Long prompts show a progress bar.
 - Settings at three levels: global defaults, per model (name, system prompt, sampler, context

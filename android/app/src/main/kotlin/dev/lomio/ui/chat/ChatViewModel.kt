@@ -17,6 +17,7 @@ import dev.lomio.data.db.ModelState
 import dev.lomio.data.db.downloadBytes
 import dev.lomio.data.db.hasVision
 import dev.lomio.domain.ChatReducer
+import dev.lomio.domain.ContextUsage
 import dev.lomio.engine.LoadOutcome
 import dev.lomio.llama.EngineState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -87,6 +88,7 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
           (bits.engine as? EngineState.Loading)?.let { l -> ready.firstOrNull { it.filePath == l.path } }
         val info =
           (bits.engine as? EngineState.Loaded)?.info ?: (bits.engine as? EngineState.Generating)?.info
+        val visible = ChatReducer.visibleMessages(id, msgs, gen)
         val pickers =
           ready.map {
             PickerModel(it.id, it.displayName, it.quant, it.downloadBytes, it.id == bits.activeId, vision = it.hasVision)
@@ -94,7 +96,8 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
         ChatUiState(
           conversationId = id,
           title = conv?.title ?: "New chat",
-          messages = ChatReducer.visibleMessages(id, msgs, gen),
+          messages = visible,
+          contextUsage = ContextUsage.of(visible, info?.nCtx),
           isGenerating = gen.isGenerating && gen.conversationId == id,
           modelName = (active ?: loadingModel)?.displayName,
           modelStatus = if (active == null && status == ModelStatus.LOADED) ModelStatus.NONE else status,
@@ -190,6 +193,12 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
   }
 
   fun stop() = c.chatService.stop()
+
+  /** Summarize & continue (see ChatService.summarize). */
+  fun summarize() {
+    val id = conversationId.value ?: return
+    c.chatService.summarize(id)
+  }
 
   fun toggleThinking() {
     thinking.value = !thinking.value

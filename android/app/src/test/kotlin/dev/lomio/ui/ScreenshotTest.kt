@@ -686,6 +686,58 @@ class ScreenshotTest {
     captureScreenRoboImage("build/outputs/roborazzi/model_sheet_${if (dark) "dark" else "light"}.png")
   }
 
+  /** A long chat at 78% of its context: the top-bar meter, then a summary note. */
+  private val contextChat =
+    chat.copy(
+      title = "Planning the garden",
+      isGenerating = false,
+      contextUsage = dev.lomio.domain.ContextUsage(3190, 4096),
+      messages =
+        listOf(
+          UiMessage("u1", MessageRole.USER, "Which vegetables can I still plant in October?"),
+          UiMessage(
+            "a1",
+            MessageRole.ASSISTANT,
+            "In a mild climate: garlic, broad beans, onion sets and winter lettuce. Garlic wants a sunny, well-drained spot.",
+            stats = GenerationStats(2950, 2900, 240, 380, 95.0, 18.3, StopReason.EOS),
+          ),
+          UiMessage(
+            "s1",
+            MessageRole.SYSTEM,
+            "The user plans an October vegetable bed in a mild climate. Suggested: garlic, broad beans, onion sets, " +
+              "winter lettuce; garlic needs sun and drainage. Open question: how far apart to plant the garlic.",
+          ),
+          UiMessage("u2", MessageRole.USER, "How far apart should the garlic go?"),
+        ),
+    )
+
+  private val contextChatFull =
+    contextChat.copy(messages = contextChat.messages.take(2))
+
+  @Test fun chatContextLight() = shoot("chat_context", dark = false) { ChatScreen(contextChat.copy(contextUsage = null), ChatActions()) }
+
+  @Test fun chatContextDark() = shoot("chat_context", dark = true) { ChatScreen(contextChat.copy(contextUsage = null), ChatActions()) }
+
+  private fun shootContextDialog(dark: Boolean) {
+    compose.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) {
+        LomioTheme(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColor = false) {
+          ChatScreen(contextChatFull, ChatActions())
+        }
+      }
+    }
+    compose.waitForIdle()
+    captureScreenRoboImage("build/outputs/roborazzi/chat_context_meter_${if (dark) "dark" else "light"}.png")
+    // Same path as a user: tap the meter.
+    compose.onNodeWithContentDescription("Context 77% full").performClick()
+    compose.waitForIdle()
+    captureScreenRoboImage("build/outputs/roborazzi/chat_context_dialog_${if (dark) "dark" else "light"}.png")
+  }
+
+  @Test fun chatContextDialogLight() = shootContextDialog(dark = false)
+
+  @Test fun chatContextDialogDark() = shootContextDialog(dark = true)
+
   @Test fun modelSheetLight() = shootModelSheet(dark = false)
 
   @Test fun modelSheetDark() = shootModelSheet(dark = true)

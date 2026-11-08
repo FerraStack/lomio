@@ -257,7 +257,15 @@ fun GpuControls(settings: AppSettings, gpu: GpuSupport, onChange: ((AppSettings)
     )
   }
   if (settings.gpuEnabled) {
-    SliderRow("Layers on the GPU (99 = all)", settings.gpuLayers.coerceIn(1, 99).toFloat(), 1f..99f, 97, "%.0f") { v ->
+    // 99 covers every layer of any phone-sized model, so the top of the slider reads "All" (#28).
+    SliderRow(
+      "Layers on the GPU",
+      settings.gpuLayers.coerceIn(1, 99).toFloat(),
+      1f..99f,
+      97,
+      "%.0f",
+      valueText = { if (it.roundToInt() >= 99) "All" else it.roundToInt().toString() },
+    ) { v ->
       onChange { it.copy(gpuLayers = v.roundToInt()) }
     }
   }
@@ -318,12 +326,14 @@ fun SliderRow(
   range: ClosedFloatingPointRange<Float>,
   steps: Int,
   format: String,
+  /** Overrides [format] for the value shown next to the label. */
+  valueText: ((Float) -> String)? = null,
   onChange: (Float) -> Unit,
 ) {
   Column(Modifier.padding(vertical = 4.dp)) {
     Row {
       Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-      Text(String.format(Locale.US, format, value), style = MaterialTheme.typography.bodyMedium)
+      Text(valueText?.invoke(value) ?: String.format(Locale.US, format, value), style = MaterialTheme.typography.bodyMedium)
     }
     Slider(
       value = value.coerceIn(range),

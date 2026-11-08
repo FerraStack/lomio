@@ -59,7 +59,7 @@ You need a Snapdragon 8 Gen 2 / 8 Gen 3 / 8 Elite phone (Adreno 740/750/830), or
 2. Download a **Q4_0** model, the backend's best-optimised format. For example, Llama 3.2 3B
    Q4_0 from the starter list. Q8_0, Q4_K and Q6_K also work, more slowly.
 3. Benchmark on the CPU first: Benchmark → Default (pp512/tg128) → Run. Note pp and tg.
-4. Settings → GPU acceleration (experimental) → on, layers 99. Load the model again from the
+4. Settings → GPU acceleration (experimental) → on, layers "All". Load the model again from the
    model sheet. The first GPU load builds the kernels and can take 10–60 s; later loads use
    the cache.
 5. Benchmark again. "Runs on" must say `GPU (OpenCL): QUALCOMM Adreno(TM) … · N/N layers`.
