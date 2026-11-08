@@ -7,6 +7,8 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.lomio.data.db.MessageRole
@@ -84,11 +86,17 @@ class ShortcutsEndToEndTest {
     shell("cmd statusbar click-tile $tile")
     compose.waitUntil(15_000) { !shown(QUESTION) }
     compose.waitUntil(5_000) { runCatching { composer.assertIsFocused() }.isSuccess }
+    shell("cmd statusbar remove-tile $tile")
     Thread.sleep(1_000) // let the keyboard finish sliding in
     screenshot("e2e_7_ask_lomio")
-    shell("cmd statusbar collapse")
-    shell("cmd statusbar remove-tile $tile")
 
+    // Leave the device as the next test expects it: no keyboard, no shade, activity resumed.
+    instrumentation.runOnMainSync {
+      val window = compose.activity.window
+      WindowCompat.getInsetsController(window, window.decorView).hide(WindowInsetsCompat.Type.ime())
+    }
+    shell("cmd statusbar collapse")
+    compose.waitForIdle()
     runBlocking { c.chats.delete(chat.id) }
   }
 
