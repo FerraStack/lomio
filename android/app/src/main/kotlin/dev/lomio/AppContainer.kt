@@ -7,6 +7,7 @@ import dev.lomio.data.GgufReader
 import dev.lomio.data.ModelRepository
 import dev.lomio.data.StorageRepository
 import dev.lomio.data.db.LomioDatabase
+import dev.lomio.data.download.DownloadGate
 import dev.lomio.data.download.DownloadScheduler
 import dev.lomio.data.download.ResumableDownloader
 import dev.lomio.data.hf.HfClient
@@ -45,6 +46,7 @@ class AppContainer(context: Context) {
   val hfClient = HfClient(http, token = { hfToken })
   val downloader = ResumableDownloader(http)
   val downloads = DownloadScheduler(appContext)
+  val downloadGate = DownloadGate()
 
   val models = ModelRepository(appContext, db, downloads, GgufReader { Gguf.read(it) })
   val chats = ChatRepository(db)

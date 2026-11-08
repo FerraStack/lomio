@@ -76,6 +76,8 @@ import dev.lomio.ui.models.ModelSettingsScreen
 import dev.lomio.ui.models.ModelSettingsUiState
 import dev.lomio.ui.models.TemplateMode
 import dev.lomio.ui.models.TemplatePreview
+import dev.lomio.data.hf.TokenCheck
+import dev.lomio.ui.settings.TokenCheckState
 
 /**
  * Roborazzi screenshots of the main screens with fake state (no native library, no DB).
@@ -550,6 +552,51 @@ class ScreenshotTest {
   @Test fun chatGenSheetLight() = shootGenSheet(dark = false)
 
   @Test fun chatGenSheetDark() = shootGenSheet(dark = true)
+
+  private val downloads =
+    ModelsUiState(
+      models =
+        listOf(
+          ModelCardState(
+            id = "d1", name = "gemma 3 4b it", subtitle = "unsloth/gemma-3-4b-it-GGUF", quant = "Q4_0",
+            sizeBytes = 2_370_000_000, state = ModelState.DOWNLOADING, bytesDone = 1_420_000_000, fit = Fit.FITS,
+          ),
+          ModelCardState(
+            id = "d2", name = "Llama 3.2 3B Instruct", subtitle = "bartowski/Llama-3.2-3B-Instruct-GGUF", quant = "Q4_0",
+            sizeBytes = 1_921_909_280, state = ModelState.DOWNLOADING, bytesDone = 310_000_000, fit = Fit.FITS,
+            error = dev.lomio.data.download.DownloadRunner.NO_NOTIFICATION,
+          ),
+          ModelCardState(
+            id = "d3", name = "Qwen3 8B", subtitle = "Qwen/Qwen3-8B-GGUF", quant = "Q4_K_M",
+            sizeBytes = 5_030_000_000, state = ModelState.QUEUED, fit = Fit.TIGHT,
+          ),
+          ModelCardState(
+            id = "d4", name = "Phi-4 mini", subtitle = "unsloth/Phi-4-mini-instruct-GGUF", quant = "Q4_K_M",
+            sizeBytes = 2_490_000_000, state = ModelState.PAUSED, bytesDone = 600_000_000, fit = Fit.FITS,
+          ),
+        ),
+    )
+
+  @Test fun modelsDownloadsLight() = shoot("models_downloads", dark = false) { ModelsScreen(downloads, ModelsActions()) }
+
+  @Test fun modelsDownloadsDark() = shoot("models_downloads", dark = true) { ModelsScreen(downloads, ModelsActions()) }
+
+  private fun shootToken(dark: Boolean, check: TokenCheckState) {
+    compose.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) {
+        LomioTheme(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColor = false) {
+          SettingsScreen(AppSettings(hfToken = "hf_0123456789abcdef"), {}, {}, tokenCheck = check)
+        }
+      }
+    }
+    compose.onNodeWithText("Test token").performScrollTo()
+    compose.waitForIdle()
+    compose.onRoot().captureRoboImage("build/outputs/roborazzi/settings_token_${if (dark) "dark" else "light"}.png")
+  }
+
+  @Test fun settingsTokenLight() = shootToken(false, TokenCheckState.Done(TokenCheck.Valid("lomio-dev")))
+
+  @Test fun settingsTokenDark() = shootToken(true, TokenCheckState.Done(TokenCheck.Rejected(401)))
 
   private val loadFailed =
     ChatUiState(

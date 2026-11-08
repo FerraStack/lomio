@@ -79,22 +79,24 @@ class ModelRepository(
             quant = file.quant,
             createdAt = clock(),
           ))
-        .copy(state = ModelState.DOWNLOADING, errorMessage = null)
+        .copy(state = ModelState.QUEUED, errorMessage = null)
     dao.upsert(model)
-    downloads.enqueue(model.id)
+    downloads.enqueue(model.id, model.sizeBytes - model.bytesDone)
     return model
   }
 
   suspend fun pause(id: String) {
     downloads.cancel(id)
     val m = dao.get(id) ?: return
-    if (m.state == ModelState.DOWNLOADING) dao.updateProgress(id, ModelState.PAUSED, m.bytesDone)
+    if (m.state == ModelState.DOWNLOADING || m.state == ModelState.QUEUED) {
+      dao.updateProgress(id, ModelState.PAUSED, m.bytesDone)
+    }
   }
 
   suspend fun resume(id: String) {
     val m = dao.get(id) ?: return
-    dao.updateProgress(id, ModelState.DOWNLOADING, m.bytesDone)
-    downloads.enqueue(id)
+    dao.updateProgress(id, ModelState.QUEUED, m.bytesDone)
+    downloads.enqueue(id, m.sizeBytes - m.bytesDone)
   }
 
   /** Cancels any download and removes the model, its files and settings. */

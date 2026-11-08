@@ -25,7 +25,7 @@ data class AppSettings(
   /** Unload the model after this many minutes in the background; 0 = never. */
   val unloadAfterMinutes: Int = 10,
   val lastModelId: String? = null,
-  // TODO(M2): move the token to Android Keystore-backed storage (RESEARCH.md §7).
+  /** Kept in memory in plain text; stored only encrypted (see [SecretBox]). */
   val hfToken: String = "",
   val generation: GenerationSettings = GenerationSettings.DEFAULTS,
   val load: LoadSettings = LoadSettings(nCtx = 4096, nThreads = 0, nBatch = 512, useMmap = true),
@@ -35,7 +35,22 @@ data class AppSettings(
   }
 }
 
-class SettingsRepository(private val store: DataStore<Preferences>) {
+class SettingsRepository(
+  private val store: DataStore<Preferences>,
+  private val secrets: SecretBox = KeystoreSecretBox(),
+) {
+  /** Last decrypted token, so every settings emission doesn't hit the Keystore. */
+  @Volatile private var opened: Pair<String, String>? = null
+
+  private fun openToken(sealed: String): String =
+    opened?.takeIf { it.first == sealed }?.second
+      ?: (secrets.open(sealed) ?: "").also { opened = sealed to it }
+
+  /** Re-writes a token stored in plain text by an older version as ciphertext (issue #5). */
+  suspend fun migrateSecrets() {
+    if (store.data.first()[HF_TOKEN] != null) update { it }
+  }
+
   val settings: Flow<AppSettings> = store.data.map(::fromPrefs)
 
   suspend fun current(): AppSettings = settings.first()
@@ -51,7 +66,13 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
       prefs[AUTO_LOAD] = next.autoLoadLastModel
       prefs[UNLOAD_AFTER] = next.unloadAfterMinutes
       if (next.lastModelId != null) prefs[LAST_MODEL] = next.lastModelId else prefs.remove(LAST_MODEL)
-      prefs[HF_TOKEN] = next.hfToken
+      prefs.remove(HF_TOKEN) // legacy plaintext
+      val sealed = prefs[HF_TOKEN_SEALED]
+      when {
+        next.hfToken.isBlank() -> prefs.remove(HF_TOKEN_SEALED)
+        sealed != null && openToken(sealed) == next.hfToken -> Unit // unchanged: keep the ciphertext
+        else -> prefs[HF_TOKEN_SEALED] = secrets.seal(next.hfToken).also { opened = it to next.hfToken }
+      }
       prefs[GENERATION] = SettingsJson.encodeGen(next.generation)!!
       prefs[LOAD] = SettingsJson.encodeLoad(next.load)!!
     }
@@ -68,7 +89,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
       autoLoadLastModel = p[AUTO_LOAD] ?: d.autoLoadLastModel,
       unloadAfterMinutes = p[UNLOAD_AFTER] ?: d.unloadAfterMinutes,
       lastModelId = p[LAST_MODEL],
-      hfToken = p[HF_TOKEN] ?: d.hfToken,
+      hfToken = p[HF_TOKEN_SEALED]?.let(::openToken) ?: p[HF_TOKEN] ?: d.hfToken,
       generation = d.generation.overlay(SettingsJson.decodeGen(p[GENERATION])),
       load = d.load.overlay(SettingsJson.decodeLoad(p[LOAD])),
     )
@@ -83,7 +104,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     val AUTO_LOAD = booleanPreferencesKey("auto_load_last_model")
     val UNLOAD_AFTER = intPreferencesKey("unload_after_minutes")
     val LAST_MODEL = stringPreferencesKey("last_model_id")
+    /** Plain text, written by versions before the Keystore change; migrated on start. */
     val HF_TOKEN = stringPreferencesKey("hf_token")
+    val HF_TOKEN_SEALED = stringPreferencesKey("hf_token_sealed")
     val GENERATION = stringPreferencesKey("generation_json")
     val LOAD = stringPreferencesKey("load_json")
   }

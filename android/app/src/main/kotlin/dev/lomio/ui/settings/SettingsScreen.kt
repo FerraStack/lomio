@@ -1,5 +1,27 @@
 package dev.lomio.ui.settings
 
+import androidx.compose.foundation.layout.size
+
+import androidx.compose.foundation.layout.Spacer
+
+import androidx.compose.ui.semantics.semantics
+
+import androidx.compose.ui.semantics.liveRegion
+
+import androidx.compose.ui.semantics.LiveRegionMode
+
+import androidx.compose.material.icons.outlined.CloudOff
+
+import androidx.compose.material.icons.outlined.ErrorOutline
+
+import androidx.compose.material.icons.outlined.CheckCircle
+
+import androidx.compose.material3.CircularProgressIndicator
+
+import androidx.compose.material3.OutlinedButton
+
+import dev.lomio.data.hf.TokenCheck
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -51,6 +73,8 @@ fun SettingsScreen(
   onChange: ((AppSettings) -> AppSettings) -> Unit,
   onOpenDrawer: () -> Unit,
   modifier: Modifier = Modifier,
+  tokenCheck: TokenCheckState? = null,
+  onTestToken: () -> Unit = {},
 ) {
   Scaffold(
     modifier = modifier,
@@ -114,11 +138,13 @@ fun SettingsScreen(
         initial = settings.hfToken,
         onValueChange = { v -> onChange { it.copy(hfToken = v.trim()) } },
         label = { Text("Hugging Face token (optional)") },
-        supportingText = { Text("Needed for gated models. Only sent to huggingface.co.") },
+        supportingText = { Text("Needed for gated models. Stored encrypted on this device; only sent to huggingface.co.") },
         singleLine = true,
         visualTransformation = PasswordVisualTransformation(),
-        modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+        modifier = Modifier.fillMaxWidth(),
       )
+      TokenTestRow(enabled = settings.hfToken.isNotBlank(), state = tokenCheck, onTest = onTestToken)
+      Spacer(Modifier.size(24.dp))
     }
   }
 }
@@ -232,5 +258,41 @@ fun SliderRow(
         if (steps > 10) SliderDefaults.colors(activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent)
         else SliderDefaults.colors(),
     )
+  }
+}
+
+sealed interface TokenCheckState {
+  data object Checking : TokenCheckState
+
+  data class Done(val result: TokenCheck) : TokenCheckState
+}
+
+@Composable
+private fun TokenTestRow(enabled: Boolean, state: TokenCheckState?, onTest: () -> Unit) {
+  Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+    OutlinedButton(onClick = onTest, enabled = enabled && state != TokenCheckState.Checking) { Text("Test token") }
+    Spacer(Modifier.size(12.dp))
+    val (text, color, icon) =
+      when (val s = state) {
+        null -> Triple(null, MaterialTheme.colorScheme.onSurfaceVariant, null)
+        TokenCheckState.Checking -> Triple("Checking…", MaterialTheme.colorScheme.onSurfaceVariant, null)
+        is TokenCheckState.Done ->
+          when (val r = s.result) {
+            is TokenCheck.Valid -> Triple("Signed in as ${r.user}", MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
+            is TokenCheck.Rejected -> Triple("Hugging Face rejected this token", MaterialTheme.colorScheme.error, Icons.Outlined.ErrorOutline)
+            is TokenCheck.Unreachable -> Triple("Couldn't reach Hugging Face (${r.message})", MaterialTheme.colorScheme.error, Icons.Outlined.CloudOff)
+          }
+      }
+    if (state == TokenCheckState.Checking) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+    icon?.let { Icon(it, null, Modifier.size(18.dp), tint = color) }
+    text?.let {
+      Text(
+        it,
+        style = MaterialTheme.typography.bodySmall,
+        color = color,
+        maxLines = 2,
+        modifier = Modifier.padding(start = 6.dp).semantics { liveRegion = LiveRegionMode.Polite },
+      )
+    }
   }
 }

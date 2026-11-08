@@ -1,11 +1,18 @@
 package dev.lomio.data.download
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.job.JobInfo
+import android.app.job.JobScheduler
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
-import androidx.core.app.NotificationCompat
+import android.os.PersistableBundle
+import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -17,18 +24,48 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import dev.lomio.LomioApp
-import dev.lomio.R
 import dev.lomio.data.db.ModelState
-import java.io.File
-import java.io.IOException
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
 
-/** Enqueues one unique download job per model (so a second tap doesn't start a duplicate). */
+/**
+ * Starts model downloads. On Android 14+ a download the user starts runs as a user-initiated
+ * data transfer job: no foreground-service start from the background, and no 6 h/day dataSync
+ * cap (issue #4). Older versions, or a start the system refuses, use WorkManager.
+ */
 class DownloadScheduler(private val context: Context) {
-  fun enqueue(modelId: String) {
+  enum class Path { USER_INITIATED_JOB, WORK_MANAGER }
+
+  fun enqueue(modelId: String, estimatedBytes: Long = 0): Path {
+    if (Build.VERSION.SDK_INT >= 34 && scheduleUserInitiated(modelId, estimatedBytes)) return Path.USER_INITIATED_JOB
+    enqueueWork(modelId)
+    return Path.WORK_MANAGER
+  }
+
+  @RequiresApi(34)
+  private fun scheduleUserInitiated(modelId: String, estimatedBytes: Long): Boolean {
+    val js = context.getSystemService(JobScheduler::class.java) ?: return false
+    val network =
+      NetworkRequest.Builder()
+        .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        .build()
+    val job =
+      JobInfo.Builder(jobId(modelId), ComponentName(context, DownloadJobService::class.java))
+        .setUserInitiated(true)
+        .setRequiredNetwork(network)
+        .setEstimatedNetworkBytes(estimatedBytes.coerceAtLeast(0), 0)
+        .setBackoffCriteria(30_000, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
+        .setExtras(PersistableBundle().apply { putString(DownloadJobService.KEY_MODEL_ID, modelId) })
+        .build()
+    return try {
+      js.schedule(job) == JobScheduler.RESULT_SUCCESS
+    } catch (e: RuntimeException) {
+      // Only allowed while the app is visible; fall back to WorkManager otherwise.
+      Log.w(TAG, "user-initiated job refused, using WorkManager", e)
+      false
+    }
+  }
+
+  private fun enqueueWork(modelId: String) {
     val request =
       OneTimeWorkRequestBuilder<DownloadWorker>()
         .setInputData(workDataOf(DownloadWorker.KEY_MODEL_ID to modelId))
@@ -36,11 +73,11 @@ class DownloadScheduler(private val context: Context) {
         .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
         .addTag(TAG)
         .build()
-    WorkManager.getInstance(context)
-      .enqueueUniqueWork(workName(modelId), ExistingWorkPolicy.KEEP, request)
+    WorkManager.getInstance(context).enqueueUniqueWork(workName(modelId), ExistingWorkPolicy.KEEP, request)
   }
 
   fun cancel(modelId: String) {
+    if (Build.VERSION.SDK_INT >= 34) context.getSystemService(JobScheduler::class.java)?.cancel(jobId(modelId))
     WorkManager.getInstance(context).cancelUniqueWork(workName(modelId))
   }
 
@@ -48,147 +85,59 @@ class DownloadScheduler(private val context: Context) {
     const val TAG = "model-download"
 
     fun workName(modelId: String) = "download-$modelId"
+
+    /** Stable job id per model; the model id travels in the extras, so a collision is harmless. */
+    fun jobId(modelId: String) = 0x10000 + (modelId.hashCode() and 0x7fff)
+
+    /** Pause from the notification: handled by [DownloadActionReceiver]. */
+    fun pauseIntent(context: Context, modelId: String): PendingIntent =
+      PendingIntent.getBroadcast(
+        context,
+        jobId(modelId),
+        Intent(context, DownloadActionReceiver::class.java)
+          .setAction(DownloadActionReceiver.ACTION_PAUSE)
+          .putExtra(DownloadActionReceiver.EXTRA_MODEL_ID, modelId),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+      )
   }
 }
 
-/**
- * Runs a model download as a user-visible foreground job (RESEARCH.md §8.1: Rust/Kotlin core
- * downloads, Android owns the lifecycle). Progress goes to the DB, which the UI observes.
- */
-class DownloadWorker(context: Context, params: WorkerParameters) :
-  CoroutineWorker(context, params) {
-
+/** WorkManager path (Android 13 and older, or when a user-initiated job can't be scheduled). */
+class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
   private val container
     get() = (applicationContext as LomioApp).container
 
   override suspend fun doWork(): Result {
     val modelId = inputData.getString(KEY_MODEL_ID) ?: return Result.failure()
-    val dao = container.db.models()
-    var model = dao.get(modelId) ?: return Result.failure()
-    val repo = model.hfRepo ?: return Result.failure()
-    val path = model.hfFile ?: return Result.failure()
-    val dest = File(model.filePath ?: container.models.hfDestination(repo, path).absolutePath)
-    val hf = container.hfClient
-
-    // Read the token ourselves: the process may have been started by WorkManager just now,
-    // before the app's async settings collector ran (gated models would 401 otherwise).
-    val token = container.settings.current().hfToken
-
-    return try {
-      // Pin the download to a commit so a resume can never mix two versions of the file.
-      if (model.hfRevision.isNullOrBlank() || model.hfRevision == "main") {
-        val sha = hf.commitSha(repo)
-        model = model.copy(hfRevision = sha)
-        dao.upsert(model)
-      }
-      val url = hf.downloadUrl(repo, path, model.hfRevision!!)
-
-      val partial = container.downloader.partFile(dest).length()
-      val remaining = (model.sizeBytes - partial).coerceAtLeast(0)
-      dest.parentFile?.mkdirs()
-      val free = dest.parentFile?.usableSpace ?: Long.MAX_VALUE
-      if (remaining + STORAGE_MARGIN_BYTES > free) {
-        throw InsufficientStorageException(remaining + STORAGE_MARGIN_BYTES, free)
-      }
-
-      runCatching { setForeground(foregroundInfo(model.displayName, partial, model.sizeBytes)) }
-      dao.updateProgress(modelId, ModelState.DOWNLOADING, partial)
-
-      var lastDbWrite = 0L
-      var lastPercent = -1
-      container.downloader.download(
-        url = url,
-        dest = dest,
-        expectedSize = model.sizeBytes.takeIf { it > 0 },
-        expectedSha256 = model.sha256,
-        headers = hf.authHeaders(url, token),
-        progressIntervalMs = 500,
-      ) { done, total ->
-        val now = System.currentTimeMillis()
-        if (now - lastDbWrite > 1_000) {
-          lastDbWrite = now
-          dao.updateProgress(modelId, ModelState.DOWNLOADING, done)
-        }
-        val percent = if (total > 0) (done * 100 / total).toInt() else 0
-        if (percent != lastPercent) {
-          lastPercent = percent
-          runCatching { setForeground(foregroundInfo(model.displayName, done, total)) }
+    var foregroundRefused = false
+    val outcome =
+      DownloadRunner(container).run(modelId, runAttemptCount) { name, done, total ->
+        if (foregroundRefused) return@run
+        try {
+          setForeground(foregroundInfo(modelId, name, done, total))
+        } catch (e: Exception) {
+          // Android 12+ refuses to start a foreground service from the background: keep going
+          // as a plain worker, and say so on the model card.
+          foregroundRefused = true
+          Log.w(TAG, "foreground refused", e)
+          val dao = container.db.models()
+          dao.get(modelId)?.let { dao.updateProgress(modelId, ModelState.DOWNLOADING, it.bytesDone, DownloadRunner.NO_NOTIFICATION) }
         }
       }
-      val ready =
-        container.models.withMetadata(
-          model.copy(state = ModelState.READY, bytesDone = dest.length(), filePath = dest.absolutePath, errorMessage = null),
-          dest,
-        )
-      dao.upsert(ready)
-      Result.success()
-    } catch (e: CancellationException) {
-      settle(modelId, dest, ModelState.PAUSED, null)
-      throw e
-    } catch (e: Throwable) {
-      val transient =
-        e is IOException &&
-          e !is ChecksumMismatchException &&
-          e !is SizeMismatchException &&
-          e !is InsufficientStorageException &&
-          !(e is HttpStatusException && e.code in 400..499)
-      if (transient && runAttemptCount < MAX_WORK_ATTEMPTS) {
-        // Network dropped for longer than the downloader's own retries: let WorkManager
-        // back off and resume when connectivity returns.
-        settle(modelId, dest, ModelState.DOWNLOADING, "Waiting for network… (${e.message})")
-        Result.retry()
-      } else {
-        settle(modelId, dest, ModelState.ERROR, userMessage(e))
-        Result.failure()
-      }
+    return when (outcome) {
+      DownloadOutcome.DONE -> Result.success()
+      DownloadOutcome.RETRY -> Result.retry()
+      DownloadOutcome.FAILED -> Result.failure()
     }
   }
 
-  /** Best-effort state write that never throws (the DB itself may be the problem, e.g. disk full). */
-  private suspend fun settle(modelId: String, dest: File, state: ModelState, message: String?) {
-    withContext(NonCancellable) {
-      runCatching {
-        val partial = container.downloader.partFile(dest).length()
-        container.db.models().updateProgress(modelId, state, partial, message)
-      }
-    }
-  }
+  override suspend fun getForegroundInfo(): ForegroundInfo =
+    foregroundInfo(inputData.getString(KEY_MODEL_ID).orEmpty(), null, 0, 0)
 
-  private fun userMessage(e: Throwable): String =
-    when {
-      e is HttpStatusException && (e.code == 401 || e.code == 403) ->
-        "Access denied (HTTP ${e.code}). Gated model? Add a Hugging Face token in Settings."
-      e is HttpStatusException && e.code == 404 -> "File not found on Hugging Face (HTTP 404)."
-      e is InsufficientStorageException -> e.message!!
-      e is ChecksumMismatchException -> "Downloaded file is corrupt (checksum mismatch). Try again."
-      else -> e.message ?: e.javaClass.simpleName
-    }
-
-  override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo("model", 0, 0)
-
-  private fun foregroundInfo(name: String, done: Long, total: Long): ForegroundInfo {
-    val nm = applicationContext.getSystemService(NotificationManager::class.java)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      nm.createNotificationChannel(
-        NotificationChannel(CHANNEL, "Model downloads", NotificationManager.IMPORTANCE_LOW)
-      )
-    }
-    val percent = if (total > 0) (done * 100 / total).toInt() else 0
+  private fun foregroundInfo(modelId: String, name: String?, done: Long, total: Long): ForegroundInfo {
     val notification =
-      NotificationCompat.Builder(applicationContext, CHANNEL)
-        .setSmallIcon(R.drawable.ic_stat_download)
-        .setContentTitle("Downloading $name")
-        .setContentText(if (total > 0) "$percent%" else "Starting…")
-        .setProgress(100, percent, total <= 0)
-        .setOngoing(true)
-        .setOnlyAlertOnce(true)
-        .addAction(
-          0,
-          "Pause",
-          WorkManager.getInstance(applicationContext).createCancelPendingIntent(id),
-        )
-        .build()
-    val notificationId = id.hashCode()
+      DownloadNotifications.build(applicationContext, name, done, total, DownloadScheduler.pauseIntent(applicationContext, modelId))
+    val notificationId = DownloadScheduler.jobId(modelId)
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       ForegroundInfo(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     } else {
@@ -198,9 +147,9 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
 
   companion object {
     const val KEY_MODEL_ID = "model_id"
-    private const val MAX_WORK_ATTEMPTS = 8
-    /** Keep this much free space beyond the file itself. */
-    const val STORAGE_MARGIN_BYTES = 300L * 1024 * 1024
-    private const val CHANNEL = "downloads"
+    /** Kept for callers that size checks before enqueueing. */
+    const val STORAGE_MARGIN_BYTES = DownloadRunner.STORAGE_MARGIN_BYTES
   }
 }
+
+private const val TAG = "lomio-download"

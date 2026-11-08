@@ -1,5 +1,7 @@
 package dev.lomio.ui
 
+import dev.lomio.ui.settings.TokenCheckState
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.lomio.AppContainer
@@ -30,7 +32,23 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
   val settings: StateFlow<AppSettings?> =
     c.settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-  fun update(transform: (AppSettings) -> AppSettings) = viewModelScope.launch { c.settings.update(transform) }
+  fun update(transform: (AppSettings) -> AppSettings) =
+    viewModelScope.launch {
+      c.settings.update(transform)
+      _tokenCheck.value = null
+    }
+
+  private val _tokenCheck = MutableStateFlow<TokenCheckState?>(null)
+  /** Result of the last "Test token"; cleared when settings change. */
+  val tokenCheck: StateFlow<TokenCheckState?> = _tokenCheck.asStateFlow()
+
+  fun testToken() =
+    viewModelScope.launch {
+      val token = c.settings.current().hfToken
+      if (token.isBlank()) return@launch
+      _tokenCheck.value = TokenCheckState.Checking
+      _tokenCheck.value = TokenCheckState.Done(c.hfClient.checkToken(token))
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)

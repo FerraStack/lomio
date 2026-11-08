@@ -9,7 +9,8 @@ import androidx.room.PrimaryKey
 
 enum class ModelSource { HF, LOCAL }
 
-enum class ModelState { REMOTE, DOWNLOADING, PAUSED, READY, ERROR }
+/** QUEUED: waiting for a free download slot (at most [dev.lomio.data.download.DownloadGate.MAX] run at once). */
+enum class ModelState { REMOTE, QUEUED, DOWNLOADING, PAUSED, READY, ERROR }
 
 /** A model the app knows about: downloaded, downloading, or imported. (RESEARCH.md §8.2) */
 @Entity(tableName = "model", indices = [Index(value = ["hf_repo", "hf_file"], unique = true)])

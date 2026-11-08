@@ -306,7 +306,14 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
         }
       Screen.SETTINGS ->
         settings?.let { s ->
-          SettingsScreen(settings = s, onChange = { settingsVm.update(it) }, onOpenDrawer = { openDrawer() })
+          val tokenCheck by settingsVm.tokenCheck.collectAsStateWithLifecycle()
+          SettingsScreen(
+            settings = s,
+            onChange = { settingsVm.update(it) },
+            onOpenDrawer = { openDrawer() },
+            tokenCheck = tokenCheck,
+            onTestToken = { settingsVm.testToken() },
+          )
         }
       Screen.BENCHMARK -> {
         val state by benchVm.state.collectAsStateWithLifecycle()

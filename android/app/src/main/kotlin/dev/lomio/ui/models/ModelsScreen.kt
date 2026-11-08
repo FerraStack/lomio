@@ -257,18 +257,30 @@ fun ModelCard(m: ModelCardState, actions: ModelsActions) {
       }
       if (m.fit == Fit.WONT_FIT || m.fit == Fit.TIGHT) FitHint(m.fit)
       when (m.state) {
-        ModelState.DOWNLOADING, ModelState.PAUSED -> {
-          LinearProgressIndicator(progress = { m.progress }, modifier = Modifier.fillMaxWidth())
+        ModelState.QUEUED, ModelState.DOWNLOADING, ModelState.PAUSED -> {
+          if (m.state == ModelState.QUEUED && m.bytesDone == 0L) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+          } else {
+            LinearProgressIndicator(progress = { m.progress }, modifier = Modifier.fillMaxWidth())
+          }
           Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-              "${(m.progress * 100).toInt()}% · ${Format.bytes(m.bytesDone)} of ${Format.bytes(m.sizeBytes)}" +
-                if (m.state == ModelState.PAUSED) " · paused" else "",
+              when (m.state) {
+                ModelState.QUEUED ->
+                  if (m.error != null) "Waiting · ${Format.bytes(m.bytesDone)} of ${Format.bytes(m.sizeBytes)}"
+                  else "Queued · starts when a download finishes"
+                ModelState.PAUSED -> "${(m.progress * 100).toInt()}% · ${Format.bytes(m.bytesDone)} of ${Format.bytes(m.sizeBytes)} · paused"
+                else -> "${(m.progress * 100).toInt()}% · ${Format.bytes(m.bytesDone)} of ${Format.bytes(m.sizeBytes)}"
+              },
               style = MaterialTheme.typography.labelMedium,
               modifier = Modifier.weight(1f),
             )
-            if (m.state == ModelState.DOWNLOADING) TextButton(onClick = { actions.onPause(m.id) }) { Text("Pause") }
+            if (m.state != ModelState.PAUSED) TextButton(onClick = { actions.onPause(m.id) }) { Text("Pause") }
             else TextButton(onClick = { actions.onResume(m.id) }) { Text("Resume") }
             TextButton(onClick = { actions.onDelete(m.id) }) { Text("Cancel") }
+          }
+          m.error?.takeIf { m.state != ModelState.PAUSED }?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
           }
         }
         ModelState.ERROR -> {
