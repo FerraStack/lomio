@@ -39,10 +39,7 @@ class ShortcutsEndToEndTest {
       it.readBytes().decodeToString()
     }
 
-  private fun screenshot(name: String) {
-    shell("mkdir -p ${EndToEndChatTest.SHOT_DIR}")
-    shell("screencap -p ${EndToEndChatTest.SHOT_DIR}/$name.png")
-  }
+  private fun screenshot(name: String) = E2eShots.capture(name)
 
   private fun shown(text: String) = compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
 
