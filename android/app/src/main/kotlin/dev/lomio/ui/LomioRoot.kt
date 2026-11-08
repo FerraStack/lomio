@@ -63,6 +63,10 @@ import dev.lomio.ui.search.SearchViewModel
 import dev.lomio.ui.storage.StorageActions
 import dev.lomio.ui.storage.StorageScreen
 import dev.lomio.ui.storage.StorageViewModel
+import dev.lomio.ui.onboarding.OnboardingActions
+import dev.lomio.ui.onboarding.OnboardingScreen
+import dev.lomio.ui.onboarding.OnboardingStep
+import dev.lomio.ui.onboarding.OnboardingViewModel
 import kotlinx.coroutines.launch
 import androidx.compose.ui.res.stringResource
 import dev.lomio.R
@@ -139,6 +143,7 @@ fun LomioRoot(
     backStack.removeAt(backStack.lastIndex)
   }
 
+  val onboardingVm: OnboardingViewModel = viewModel { OnboardingViewModel(container) }
   val chatState by chatVm.state.collectAsStateWithLifecycle()
   val pendingLoad by container.modelManager.pendingConfirmation.collectAsStateWithLifecycle()
   pendingLoad?.let { p ->
@@ -192,6 +197,33 @@ fun LomioRoot(
 
   val notificationPermission =
     rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
+  // First run: no models yet and onboarding not finished (it stays up while its own download runs).
+  val allModels by container.models.observeModels().collectAsStateWithLifecycle(initialValue = null)
+  val onboardingStarted by onboardingVm.started.collectAsStateWithLifecycle()
+  val s0 = settings
+  if (s0 != null && !s0.onboardingDone && allModels != null && (allModels!!.isEmpty() || onboardingStarted)) {
+    val state by onboardingVm.state.collectAsStateWithLifecycle()
+    val done = { chatVm.open(null); navigate(Screen.CHAT) }
+    if (state.step != OnboardingStep.WELCOME) BackHandler { onboardingVm.back() }
+    OnboardingScreen(
+      state = state,
+      actions =
+        OnboardingActions(
+          onNext = onboardingVm::next,
+          onBack = onboardingVm::back,
+          onSelect = onboardingVm::select,
+          onDownload = {
+            if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            onboardingVm.download()
+          },
+          onRetry = { onboardingVm.retry() },
+          onStartChat = { onboardingVm.startChat(done) },
+          onSkip = { onboardingVm.finish(done) },
+        ),
+    )
+    return
+  }
 
   ModalNavigationDrawer(
     drawerState = drawer,

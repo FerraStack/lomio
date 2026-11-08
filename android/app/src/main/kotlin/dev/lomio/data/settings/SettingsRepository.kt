@@ -25,6 +25,8 @@ data class AppSettings(
   /** Unload the model after this many minutes in the background; 0 = never. */
   val unloadAfterMinutes: Int = 10,
   val lastModelId: String? = null,
+  /** Set once the first-run screens were finished or skipped. */
+  val onboardingDone: Boolean = false,
   /** Kept in memory in plain text; stored only encrypted (see [SecretBox]). */
   val hfToken: String = "",
   val generation: GenerationSettings = GenerationSettings.DEFAULTS,
@@ -70,6 +72,7 @@ class SettingsRepository(
       prefs[AUTO_LOAD] = next.autoLoadLastModel
       prefs[UNLOAD_AFTER] = next.unloadAfterMinutes
       if (next.lastModelId != null) prefs[LAST_MODEL] = next.lastModelId else prefs.remove(LAST_MODEL)
+      prefs[ONBOARDING_DONE] = next.onboardingDone
       prefs.remove(HF_TOKEN) // legacy plaintext
       val sealed = prefs[HF_TOKEN_SEALED]
       when {
@@ -95,6 +98,7 @@ class SettingsRepository(
       autoLoadLastModel = p[AUTO_LOAD] ?: d.autoLoadLastModel,
       unloadAfterMinutes = p[UNLOAD_AFTER] ?: d.unloadAfterMinutes,
       lastModelId = p[LAST_MODEL],
+      onboardingDone = p[ONBOARDING_DONE] ?: d.onboardingDone,
       hfToken = p[HF_TOKEN_SEALED]?.let(::openToken) ?: p[HF_TOKEN] ?: d.hfToken,
       generation = d.generation.overlay(SettingsJson.decodeGen(p[GENERATION])),
       load = d.load.overlay(SettingsJson.decodeLoad(p[LOAD])),
@@ -112,6 +116,7 @@ class SettingsRepository(
     val AUTO_LOAD = booleanPreferencesKey("auto_load_last_model")
     val UNLOAD_AFTER = intPreferencesKey("unload_after_minutes")
     val LAST_MODEL = stringPreferencesKey("last_model_id")
+    val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
     /** Plain text, written by versions before the Keystore change; migrated on start. */
     val HF_TOKEN = stringPreferencesKey("hf_token")
     val HF_TOKEN_SEALED = stringPreferencesKey("hf_token_sealed")

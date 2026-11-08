@@ -14,6 +14,8 @@ personas ("Pals"), the marketplace, voice and other extras.
 engine end to end on an x86_64 emulator: it loads a tiny GGUF, streams a reply and checks the
 stats line. arm64 phones are not tested yet:
 
+- First run: three short screens: what Lomio is, a starter model picked for the phone's RAM, and
+  its download, then straight into the first chat.
 - Chat: streaming Markdown with highlighted code blocks and a Copy button, a collapsible
   reasoning block for thinking models, Stop, Regenerate, edit-and-resend, and per-chat system
   prompts.
