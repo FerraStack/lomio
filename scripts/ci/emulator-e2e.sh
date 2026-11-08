@@ -14,15 +14,26 @@ mkdir -p "$OUT"
 
 adb wait-for-device
 adb logcat -c || true
-# The emulator's own apps (Pixel Launcher) hit ANRs while llama.cpp keeps the CPU busy; their
-# "isn't responding" dialogs would cover the screenshots.
+# The busy CI emulator's own apps (e.g. Pixel Launcher) sometimes ANR; don't let their
+# "isn't responding" dialogs cover our screenshots. The tests also dismiss one if it still
+# shows (E2eShots.capture).
 adb shell settings put global hide_error_dialogs 1 || true
+
+# Presses Back only when an ANR dialog has focus (Back = "Wait": the other app keeps running).
+dismiss_anr() {
+  if adb shell dumpsys window 2>/dev/null | grep -E "mCurrentFocus=.*Application Not Responding" > /dev/null; then
+    adb shell input keyevent KEYCODE_BACK || true
+    sleep 1
+  fi
+}
+
 adb install -r "$APK"
 adb install -r "$TEST_APK"
 
 # 1. Launch screenshot (fresh install, no models).
 adb shell am start -W -n dev.lomio/.MainActivity
 sleep 6
+dismiss_anr
 adb exec-out screencap -p > "$OUT/emulator_launch.png"
 adb shell am force-stop dev.lomio
 
@@ -39,7 +50,8 @@ adb shell am instrument -w -r \
   dev.lomio.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/instrumentation.txt"
 set -e
 
-for shot in e2e_1_loading e2e_2_streaming e2e_3_finished e2e_4_storage e2e_5_storage_cleaned e2e_vision_1_attached e2e_vision_2_sent e2e_vision_3_answer e2e_gpu_1_notice e2e_gpu_2_benchmark; do
+# Every PNG the tests saved, so a new screenshot needs no change here.
+for shot in $(adb shell ls /data/local/tmp/e2e/ 2>/dev/null | tr -d '\r' | grep '\.png$' | sed 's/\.png$//'); do
   adb pull "/data/local/tmp/e2e/$shot.png" "$OUT/$shot.png" || echo "missing screenshot: $shot"
 done
 

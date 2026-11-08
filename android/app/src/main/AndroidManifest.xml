@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Android 14+: downloads the user starts run as user-initiated data transfer jobs. -->
     <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:name=".LomioApp"
@@ -50,5 +51,15 @@
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
+
+        <!-- Local OpenAI-compatible API server (off by default; started from Settings). -->
+        <service
+            android:name=".api.ApiServerService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Local HTTP server that lets other apps on the device, or on the user's Wi-Fi when they opt in, chat with the on-device language model through an OpenAI-compatible API. Runs only while the user keeps it switched on." />
+        </service>
     </application>
 </manifest>

@@ -55,8 +55,7 @@ class EndToEndChatTest {
 
   private fun screenshot(name: String) {
     compose.waitForIdle()
-    shell("mkdir -p $SHOT_DIR")
-    shell("screencap -p $SHOT_DIR/$name.png")
+    E2eShots.capture(name)
   }
 
   @Test

@@ -41,6 +41,8 @@ class LomioApp : Application() {
       unloadJob?.cancel()
       unloadJob = null
       c.scope.launch { c.modelManager.onFirstForeground() }
+      // The API server's switch survives restarts; its service may only start from the foreground.
+      c.scope.launch { c.apiServer.resumeIfEnabled() }
     }
 
     override fun onStop(owner: LifecycleOwner) {
@@ -52,6 +54,8 @@ class LomioApp : Application() {
           delay(minutes * 60_000L)
           // Never cut off a reply that is still being written in the background.
           while (c.chatService.isBusy) delay(30_000)
+          // The local API server serves the loaded model; keep it while the server runs.
+          if (c.apiServer.isRunning) return@launch
           if (c.modelManager.activeModelId.value != null) c.modelManager.unload()
         }
     }

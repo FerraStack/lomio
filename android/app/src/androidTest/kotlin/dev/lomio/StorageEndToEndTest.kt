@@ -51,8 +51,7 @@ class StorageEndToEndTest {
 
   private fun screenshot(name: String) {
     compose.waitForIdle()
-    shell("mkdir -p ${EndToEndChatTest.SHOT_DIR}")
-    shell("screencap -p ${EndToEndChatTest.SHOT_DIR}/$name.png")
+    E2eShots.capture(name)
   }
 
   private fun shown(text: String, substring: Boolean = true) = compose.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty()

@@ -52,6 +52,8 @@ import dev.lomio.ui.models.ModelSettingsScreen
 import dev.lomio.ui.models.ModelSettingsViewModel
 import dev.lomio.ui.models.ModelsScreen
 import dev.lomio.ui.models.ModelsViewModel
+import dev.lomio.ui.settings.ApiServerActions
+import dev.lomio.ui.settings.ApiServerViewModel
 import dev.lomio.ui.settings.SettingsScreen
 import dev.lomio.ui.search.SearchActions
 import dev.lomio.ui.search.SearchScreen
@@ -346,6 +348,8 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
       Screen.SETTINGS ->
         settings?.let { s ->
           val tokenCheck by settingsVm.tokenCheck.collectAsStateWithLifecycle()
+          val apiVm: ApiServerViewModel = viewModel { ApiServerViewModel(container) }
+          val api by apiVm.state.collectAsStateWithLifecycle()
           SettingsScreen(
             settings = s,
             onChange = { settingsVm.update(it) },
@@ -355,6 +359,18 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
             gpu = remember { GpuSupport.detect() },
             onExportAll = { startExport(ExportRequest(null, it)) },
             onImport = { importChatsLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
+            apiServer = api,
+            apiServerActions =
+              ApiServerActions(
+                onEnabled = { on ->
+                  // The server's ongoing notification (with its Stop button) needs this on 13+.
+                  if (on && Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                  apiVm.setEnabled(on)
+                },
+                onPort = { apiVm.setPort(it) },
+                onLan = { apiVm.setLan(it) },
+                onNewKey = { apiVm.newKey() },
+              ),
           )
         }
       Screen.BENCHMARK -> {
