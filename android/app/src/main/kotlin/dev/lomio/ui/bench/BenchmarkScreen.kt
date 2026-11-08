@@ -25,11 +25,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.lomio.llama.BenchResult
-import java.util.Locale
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
+import dev.lomio.R
+import androidx.annotation.StringRes
 
-enum class BenchProfile(val label: String, val pp: Int, val tg: Int, val reps: Int) {
-  FAST("Fast (pp128/tg32)", 128, 32, 1),
-  DEFAULT("Default (pp512/tg128)", 512, 128, 3),
+enum class BenchProfile(@StringRes val label: Int, val pp: Int, val tg: Int, val reps: Int) {
+  FAST(R.string.bench_fast, 128, 32, 1),
+  DEFAULT(R.string.bench_default, 512, 128, 3),
 }
 
 data class BenchUiState(
@@ -59,8 +62,8 @@ fun BenchmarkScreen(
     modifier = modifier,
     topBar = {
       TopAppBar(
-        title = { Text("Benchmark") },
-        navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Outlined.Menu, "Open menu") } },
+        title = { Text(stringResource(R.string.bench_title)) },
+        navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Outlined.Menu, stringResource(R.string.action_open_menu)) } },
       )
     },
   ) { padding ->
@@ -69,7 +72,7 @@ fun BenchmarkScreen(
       verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       Text(
-        state.modelName?.let { "Model: $it" } ?: "Load a model first (Models screen).",
+        state.modelName?.let { stringResource(R.string.bench_model, it) } ?: stringResource(R.string.bench_no_model),
         style = MaterialTheme.typography.bodyLarge,
       )
       state.backend?.let { Text("Runs on: $it", style = MaterialTheme.typography.bodyMedium) }
@@ -78,31 +81,30 @@ fun BenchmarkScreen(
       }
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         BenchProfile.entries.forEach { p ->
-          FilterChip(selected = p == state.profile, onClick = { onProfile(p) }, label = { Text(p.label) })
+          FilterChip(selected = p == state.profile, onClick = { onProfile(p) }, label = { Text(stringResource(p.label)) })
         }
       }
-      Button(onClick = onRun, enabled = state.modelName != null && !state.running) { Text("Run") }
+      Button(onClick = onRun, enabled = state.modelName != null && !state.running) { Text(stringResource(R.string.bench_run)) }
       if (state.running) {
         LinearProgressIndicator(Modifier.fillMaxWidth())
-        Text("Keep the screen open; this can take a few minutes.", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.bench_keep_open), style = MaterialTheme.typography.bodySmall)
       }
       state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
       state.result?.let { r ->
         ElevatedCard(Modifier.fillMaxWidth()) {
           Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(r.modelDescription, style = MaterialTheme.typography.titleSmall)
-            Text(fmt("Prompt processing (pp%d): %.1f ± %.1f t/s", r.pp, r.ppTokensPerSec, r.ppStdDev))
-            Text(fmt("Text generation (tg%d): %.1f ± %.1f t/s", r.tg, r.tgTokensPerSec, r.tgStdDev))
-            Text("Backend: ${r.backend} · ${r.repetitions} run(s)", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.bench_pp, r.pp, r.ppTokensPerSec, r.ppStdDev))
+            Text(stringResource(R.string.bench_tg, r.tg, r.tgTokensPerSec, r.tgStdDev))
+            Text(pluralStringResource(R.plurals.bench_backend_runs, r.repetitions, r.backend, r.repetitions), style = MaterialTheme.typography.bodySmall)
           }
         }
       }
       state.systemInfo?.let {
-        Text("System info", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.bench_system_info), style = MaterialTheme.typography.titleSmall)
         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
       }
     }
   }
 }
 
-private fun fmt(f: String, vararg a: Any) = String.format(Locale.US, f, *a)

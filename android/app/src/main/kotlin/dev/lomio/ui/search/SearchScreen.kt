@@ -52,6 +52,9 @@ import dev.lomio.data.db.HIT_START
 import dev.lomio.data.db.MessageRole
 import java.text.DateFormat
 import java.util.Date
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
+import dev.lomio.R
 
 data class SearchResult(
   val messageId: String,
@@ -100,17 +103,17 @@ fun SearchScreen(state: SearchUiState, actions: SearchActions, modifier: Modifie
     modifier = modifier,
     topBar = {
       TopAppBar(
-        navigationIcon = { IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") } },
+        navigationIcon = { IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.action_back)) } },
         title = {
           TextField(
             value = state.query,
             onValueChange = actions.onQuery,
-            placeholder = { Text("Search messages") },
+            placeholder = { Text(stringResource(R.string.search_hint)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             trailingIcon = {
               if (state.query.isNotEmpty()) {
-                IconButton(onClick = { actions.onQuery("") }) { Icon(Icons.Outlined.Close, "Clear search") }
+                IconButton(onClick = { actions.onQuery("") }) { Icon(Icons.Outlined.Close, stringResource(R.string.search_clear)) }
               }
             },
             colors =
@@ -128,13 +131,13 @@ fun SearchScreen(state: SearchUiState, actions: SearchActions, modifier: Modifie
   ) { padding ->
     Box(Modifier.fillMaxSize().padding(padding)) {
       when {
-        state.query.isBlank() -> Empty("Search all your chats", "Find a message by any word in it, in every chat.")
-        state.searched && state.results.isEmpty() -> Empty("No messages match “${state.query.trim()}”", "Try fewer or different words.")
+        state.query.isBlank() -> Empty(stringResource(R.string.search_empty_title), stringResource(R.string.search_empty_body))
+        state.searched && state.results.isEmpty() -> Empty(stringResource(R.string.search_no_match_title, state.query.trim()), stringResource(R.string.search_no_match_body))
         else ->
           LazyColumn(contentPadding = PaddingValues(vertical = 8.dp), modifier = Modifier.fillMaxSize()) {
             item(key = "count") {
               Text(
-                if (state.results.size == 1) "1 message" else "${state.results.size} messages",
+                pluralStringResource(R.plurals.search_messages_count, state.results.size, state.results.size),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics { liveRegion = LiveRegionMode.Polite },
@@ -172,9 +175,10 @@ private fun ResultRow(r: SearchResult, onClick: () -> Unit) {
         modifier = Modifier.padding(start = 8.dp),
       )
     }
+    val rolePrefix = stringResource(if (r.role == MessageRole.USER) R.string.search_you else R.string.search_reply)
     Text(
       buildAnnotatedString {
-        withRole(r.role)
+        withRole(rolePrefix)
         append(highlightSnippet(r.snippet, hit))
       },
       style = MaterialTheme.typography.bodyMedium,
@@ -185,9 +189,9 @@ private fun ResultRow(r: SearchResult, onClick: () -> Unit) {
   }
 }
 
-private fun AnnotatedString.Builder.withRole(role: MessageRole) {
+private fun AnnotatedString.Builder.withRole(prefix: String) {
   pushStyle(SpanStyle(fontWeight = FontWeight.Medium))
-  append(if (role == MessageRole.USER) "You: " else "Reply: ")
+  append(prefix)
   pop()
 }
 
