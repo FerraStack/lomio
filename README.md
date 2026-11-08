@@ -22,6 +22,9 @@ stats line. arm64 phones are not tested yet:
   picker, per chat or all at once; import JSON exports.
 - Models:
   - Hugging Face search and one-tap starter models.
+  - Split GGUF models (`name-00001-of-0000N.gguf`) show as one entry. Every part downloads,
+    each resumable and checked on its own, and the model loads through the first part. The
+    Storage screen counts it as one model.
   - Downloads pinned to a commit, resumable with `If-Range`, checked against the file's sha256,
     and retried on flaky networks; storage is checked first. At most two run at once, the rest
     wait as Queued. On Android 14+ they run as user-initiated data transfer jobs (no 6 h
@@ -66,7 +69,7 @@ stats line. arm64 phones are not tested yet:
 - English, Russian and Ukrainian, with proper plural forms and localized size units ("2,37 ГБ").
   On Android 13+ the language can be set for Lomio alone in system settings → Apps → Lomio.
 
-Not done yet: split GGUF files, a vision projector for imported (local) models, a tablet layout. Screenshots of every screen are
+Not done yet: a vision projector for imported (local) models, importing split GGUF files, a tablet layout. Screenshots of every screen are
 posted by CI on each pull request; README screenshots are a TODO.
 
 ## Local API server
@@ -217,6 +220,9 @@ ccache.
    - runs `ShortcutsEndToEndTest`: the latest-chat shortcut opens that chat, and the Quick
      Settings tile (added and clicked with `cmd statusbar`) opens a new chat with the message
      field focused
+   - runs `SplitModelTest`, over the network: downloads llama.cpp's own 3-part split test model
+     (stories15M Q8_0, 26 MB, pinned commit) through the real download job, checks it's one
+     model on Storage and in the list, loads it through the first part and gets a reply
    - fails on any crash of `dev.lomio` in logcat
 3. **`screenshots-comment`** (pull requests): pushes the PNGs to the orphan `ci-screenshots`
    branch (only the latest run per PR is kept; a push that races another PR is rebased and

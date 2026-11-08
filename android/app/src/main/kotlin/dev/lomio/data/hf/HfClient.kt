@@ -38,7 +38,21 @@ data class HfFile(
   val sha256: String?,
   /** Commit the listing came from; downloads are pinned to it. Null = resolve at download. */
   val revision: String? = null,
+  /**
+   * For a model split into several GGUF files (`name-00001-of-00003.gguf`, llama.cpp's
+   * gguf-split naming): every part in order, this one (the first) included. [sizeBytes] is then
+   * the total. Empty for an ordinary single file. See [Shards.group].
+   */
+  val parts: List<HfFile> = emptyList(),
 ) {
+  /** A split model with every part present in the listing (loadable from the first part). */
+  val isSplit: Boolean
+    get() = parts.size > 1
+
+  /** A part of a split model whose other parts are missing from the listing. */
+  val isIncompleteSplit: Boolean
+    get() = splitPart != null && parts.size != splitPart!!.second
+
   val fileName: String
     get() = path.substringAfterLast('/')
 
@@ -78,6 +92,28 @@ object Projectors {
       ?: Regex("(?i)[-_.](f16|bf16|f32)\\.gguf$").find(fileName)?.groupValues?.get(1)?.uppercase()
 }
 
+/** Groups the parts of split GGUF models in a repo listing into one entry per model. */
+object Shards {
+  /**
+   * Single files stay as they are. The parts of a split model become one [HfFile]: the first
+   * part, with [HfFile.parts] = all parts in order and [HfFile.sizeBytes] = their total. A
+   * group with missing parts keeps its first part only, so the UI can say it's incomplete.
+   */
+  fun group(files: List<HfFile>): List<HfFile> {
+    val (split, single) = files.partition { it.splitPart != null }
+    val groups =
+      split
+        .groupBy { Triple(it.path.substringBeforeLast('/', ""), GgufNames.splitBase(it.fileName), it.splitPart!!.second) }
+        .map { (key, parts) ->
+          val sorted = parts.sortedBy { it.splitPart!!.first }
+          val complete = sorted.map { it.splitPart!!.first } == (1..key.third).toList()
+          val first = sorted.first()
+          if (complete) first.copy(sizeBytes = sorted.sumOf { it.sizeBytes }, parts = sorted) else first
+        }
+    return (single + groups).sortedBy { it.sizeBytes }
+  }
+}
+
 object GgufNames {
   private val QUANT =
     Regex(
@@ -90,9 +126,12 @@ object GgufNames {
   fun splitPart(fileName: String): Pair<Int, Int>? =
     SPLIT.find(fileName)?.let { it.groupValues[1].toInt() to it.groupValues[2].toInt() }
 
-  /** "Qwen3-1.7B-Q4_K_M.gguf" -> "Qwen3 1.7B". */
+  /** "Qwen3-32B-Q4_K_M-00001-of-00003.gguf" -> "Qwen3-32B-Q4_K_M" (unchanged if not split). */
+  fun splitBase(fileName: String): String = fileName.replace(SPLIT, "").removeSuffix(".gguf").removeSuffix(".GGUF")
+
+  /** "Qwen3-1.7B-Q4_K_M.gguf" -> "Qwen3 1.7B" (the part suffix of a split file is dropped). */
   fun displayName(fileName: String): String {
-    var base = fileName.removeSuffix(".gguf").removeSuffix(".GGUF")
+    var base = splitBase(fileName)
     quant(fileName)?.let { q -> base = base.replace(Regex("[-_.]$q$", RegexOption.IGNORE_CASE), "") }
     return base.replace('_', ' ').replace('-', ' ').trim()
   }

@@ -47,25 +47,11 @@ class StorageRepository(
       val sizes = mutableMapOf<String, Long>()
       val missing = mutableSetOf<String>()
       for (m in models) {
-        val path = m.filePath
-        val file = path?.let(::File)
-        val part = path?.let { File("$it.part") }
-        // A vision model's projector counts as part of the model.
-        val projector = m.mmprojPath?.let(::File)
-        val projectorBytes =
-          when {
-            projector == null -> 0L
-            projector.isFile -> projector.length()
-            else -> File("${projector.path}.part").takeIf { it.isFile }?.length() ?: 0L
-          }
-        sizes[m.id] =
-          projectorBytes +
-            when {
-              file?.isFile == true -> file.length()
-              part?.isFile == true -> part.length()
-              else -> 0L
-            }
-        if (m.state == ModelState.READY && file?.isFile != true) missing += m.id
+        // One model, however many files: every part of a split model and the vision projector
+        // count towards it (a file still downloading counts with its part file).
+        fun onDisk(f: File) = if (f.isFile) f.length() else File("${f.path}.part").takeIf { it.isFile }?.length() ?: 0L
+        sizes[m.id] = ModelFiles.owned(m).sumOf(::onDisk)
+        if (m.state == ModelState.READY && ModelFiles.weights(m).any { !it.isFile }) missing += m.id
       }
       StorageScan(
         volumeBytes = dir.totalSpace,
@@ -112,7 +98,7 @@ class StorageRepository(
         .filter { it.isFile }
         .map { Storage.FileEntry(it.canonicalPath, it.length(), it.lastModified()) }
         .toList()
-    val referenced = models.flatMap { m -> listOfNotNull(m.filePath, m.mmprojPath).map { File(it).canonicalPath } }
+    val referenced = models.flatMap { m -> ModelFiles.owned(m).map { it.canonicalPath } }
     return Storage.leftovers(files, referenced, clock())
   }
 

@@ -106,4 +106,22 @@ class StorageRepositoryTest {
     assertEquals(0L, repo.deleteLeftovers(rows))
     assertTrue(projector.exists())
   }
+
+  @Test
+  fun aSplitModelIsOneModelAndItsPartsAreNotLeftovers() = runTest {
+    val p1 = file(models, "hf_org_repo/big-Q4_K_M-00001-of-00003.gguf", 1_000)
+    file(models, "hf_org_repo/big-Q4_K_M-00002-of-00003.gguf", 900)
+    file(models, "hf_org_repo/big-Q4_K_M-00003-of-00003.gguf.part", 300) // still downloading
+    val shards =
+      ModelFiles.encodeShards((1..3).map { Shard("big-Q4_K_M-0000$it-of-00003.gguf", 1_000, null) })
+    val rows = listOf(model("big", p1.path, ModelState.DOWNLOADING).copy(shards = shards))
+
+    val scan = repo.scan(rows)
+    assertEquals(mapOf("big" to 2_200L), scan.modelBytes)
+    assertTrue("parts are not leftovers", scan.leftovers.isEmpty())
+    assertEquals(0L, repo.deleteLeftovers(rows))
+    // Once READY, a missing part means the model can't load.
+    val ready = repo.scan(listOf(rows[0].copy(state = ModelState.READY)))
+    assertEquals(setOf("big"), ready.missingFiles)
+  }
 }

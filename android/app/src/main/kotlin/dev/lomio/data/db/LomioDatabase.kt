@@ -52,6 +52,14 @@ val MIGRATION_2_3 =
     }
   }
 
+/** v4: the parts of split GGUF models. */
+val MIGRATION_3_4 =
+  object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+      db.execSQL("ALTER TABLE `model` ADD COLUMN `shards` TEXT")
+    }
+  }
+
 class Converters {
   @TypeConverter fun modelSource(v: ModelSource): String = v.name
 
@@ -80,7 +88,7 @@ class Converters {
       MessageEntity::class,
       MessageFts::class,
     ],
-  version = 3,
+  version = 4,
   exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -93,7 +101,7 @@ abstract class LomioDatabase : RoomDatabase() {
 
   companion object {
     /** Every migration, oldest first. */
-    val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+    val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
     fun create(context: Context): LomioDatabase =
       Room.databaseBuilder(context, LomioDatabase::class.java, "lomio.db").addMigrations(*MIGRATIONS).build()

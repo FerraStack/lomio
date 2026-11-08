@@ -84,6 +84,8 @@ class ModelRepository(
             state = ModelState.REMOTE,
             quant = file.quant,
             createdAt = clock(),
+            // A split model: every part, downloaded into the same folder, loaded via the first.
+            shards = ModelFiles.encodeShards(file.parts.map { Shard(it.path, it.sizeBytes, it.sha256) }),
           ))
         .let { m ->
           if (mmproj == null || m.mmprojFile != null) m
@@ -123,7 +125,8 @@ class ModelRepository(
       // The projector may be shared with another quant of the same repo: keep it then.
       val projectorShared =
         m.mmprojPath != null && dao.observeAll().first().any { it.id != id && it.mmprojPath == m.mmprojPath }
-      listOfNotNull(m.filePath, m.mmprojPath.takeIf { !projectorShared }).forEach { path ->
+      val files = ModelFiles.weights(m).map { it.path } + listOfNotNull(m.mmprojPath.takeIf { !projectorShared })
+      files.forEach { path ->
         val f = File(path)
         // Only delete files we own (inside app storage).
         if (f.canonicalPath.startsWith(modelsDir.canonicalPath)) {
@@ -200,10 +203,13 @@ class ModelRepository(
   /** Fills cached GGUF metadata; a broken header is reported but doesn't fail the import. */
   fun withMetadata(model: ModelEntity, file: File): ModelEntity {
     val meta = runCatching { gguf.read(file.absolutePath) }.getOrNull() ?: return model
+    // A split model's tensors are spread over its parts: count them all.
+    val parts = ModelFiles.weights(model).filter { it.absolutePath != file.absolutePath && it.exists() }
+    val nParams = meta.nParams + parts.sumOf { runCatching { gguf.read(it.absolutePath)?.nParams }.getOrNull() ?: 0L }
     return model.copy(
       arch = meta.architecture,
       displayName = model.displayName,
-      nParams = meta.nParams.takeIf { it > 0 },
+      nParams = nParams.takeIf { it > 0 },
       nLayers = meta.nLayer,
       nCtxTrain = meta.nCtxTrain,
       nEmbd = meta.nEmbd,

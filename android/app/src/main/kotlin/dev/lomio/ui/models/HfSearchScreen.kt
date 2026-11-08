@@ -44,6 +44,7 @@ import dev.lomio.data.hf.HfModel
 import dev.lomio.data.hf.HfSort
 import dev.lomio.domain.Fit
 import dev.lomio.ui.components.Format
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import dev.lomio.R
 
@@ -184,8 +185,10 @@ private fun RepoPane(state: HfUiState, actions: HfActions) {
           val notes =
             listOfNotNull(
               Format.bytes(f.sizeBytes),
+              // A split model is one row: all parts download together, it loads via the first.
+              if (f.isSplit) pluralStringResource(R.plurals.model_parts, f.parts.size, f.parts.size) else null,
               when {
-                f.splitPart != null -> stringResource(R.string.hf_split)
+                f.isIncompleteSplit -> stringResource(R.string.hf_split)
                 row.fit == Fit.FITS -> stringResource(R.string.hf_fits)
                 row.fit == Fit.TIGHT -> stringResource(R.string.hf_tight)
                 row.fit == Fit.WONT_FIT -> stringResource(R.string.hf_wont_fit)
@@ -194,7 +197,7 @@ private fun RepoPane(state: HfUiState, actions: HfActions) {
             )
           Text(notes.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        val supported = f.splitPart == null
+        val supported = !f.isIncompleteSplit
         FilledTonalButton(onClick = { actions.onDownload(f) }, enabled = supported && !row.alreadyAdded) {
           Text(stringResource(if (row.alreadyAdded) R.string.state_added else R.string.action_download))
         }

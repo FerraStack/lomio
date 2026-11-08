@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import dev.lomio.AppContainer
 import dev.lomio.MainActivity
 import dev.lomio.R
+import dev.lomio.data.ModelFiles
 import dev.lomio.data.db.ModelState
 import java.io.File
 import java.io.IOException
@@ -75,14 +76,16 @@ class DownloadRunner(private val c: AppContainer) {
         model = model.copy(hfRevision = hf.commitSha(repo))
         dao.upsert(model)
       }
-      // The weights, then the vision projector if the repo has one (same commit). A piece whose
-      // file is already complete (e.g. a retry after the projector failed) is skipped.
+      // The weights (one file, or each part of a split model, each resumable on its own), then
+      // the vision projector if the repo has one, all from the same commit. A piece whose file
+      // is already complete (e.g. a retry after a later part failed) is skipped.
       val projectorDest = model.mmprojFile?.let { File(model.mmprojPath ?: c.models.hfDestination(repo, it).absolutePath) }
+      val shards = ModelFiles.decodeShards(model.shards)
+      val weights =
+        if (shards.size > 1) shards.map { Piece(it.path, File(dest.parentFile, it.path.substringAfterLast('/')), it.size, it.sha256) }
+        else listOf(Piece(path, dest, model.sizeBytes, model.sha256))
       val pieces =
-        listOfNotNull(
-          Piece(path, dest, model.sizeBytes, model.sha256),
-          model.mmprojFile?.let { Piece(it, projectorDest!!, model.mmprojSize ?: 0, model.mmprojSha256) },
-        )
+        weights + listOfNotNull(model.mmprojFile?.let { Piece(it, projectorDest!!, model.mmprojSize ?: 0, model.mmprojSha256) })
       val total = pieces.sumOf { it.size }
       val alreadyDone = pieces.sumOf { it.onDisk() }
       val remaining = (total - alreadyDone).coerceAtLeast(0)
@@ -175,8 +178,11 @@ class DownloadRunner(private val c: AppContainer) {
       runCatching {
         val dao = c.db.models()
         val m = dao.get(modelId)
-        // Bytes on disk over both pieces: e.g. finished weights plus the projector's part file.
-        var done = Piece("", dest, m?.sizeBytes ?: 0, null).onDisk()
+        // Bytes on disk over all pieces: e.g. finished parts plus the next one's part file.
+        val shards = ModelFiles.decodeShards(m?.shards)
+        var done =
+          if (shards.size > 1) shards.sumOf { Piece("", File(dest.parentFile, it.path.substringAfterLast('/')), it.size, null).onDisk() }
+          else Piece("", dest, m?.sizeBytes ?: 0, null).onDisk()
         m?.mmprojPath?.let { done += Piece("", File(it), m.mmprojSize ?: 0, null).onDisk() }
         dao.updateProgress(modelId, state, done, message)
       }

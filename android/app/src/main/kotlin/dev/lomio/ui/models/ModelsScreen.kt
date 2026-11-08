@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import dev.lomio.data.db.ModelState
 import dev.lomio.domain.Fit
 import dev.lomio.ui.components.Format
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import dev.lomio.R
 import dev.lomio.data.download.DownloadRunner
@@ -84,6 +85,8 @@ data class ModelCardState(
   val fit: Fit? = null,
   /** Comes with a vision projector: can read images. */
   val vision: Boolean = false,
+  /** Files the weights are split into (gguf-split); 1 for an ordinary model. */
+  val parts: Int = 1,
 ) {
   val progress: Float
     get() = if (sizeBytes > 0) (bytesDone.toFloat() / sizeBytes).coerceIn(0f, 1f) else 0f
@@ -303,7 +306,13 @@ fun ModelCard(m: ModelCardState, actions: ModelsActions) {
         Text(m.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
       }
       FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOfNotNull(Format.params(m.params), m.quant, Format.bytes(m.sizeBytes), Format.context(m.contextLength)?.let { stringResource(R.string.models_ctx_chip, it) })
+        listOfNotNull(
+            Format.params(m.params),
+            m.quant,
+            Format.bytes(m.sizeBytes),
+            if (m.parts > 1) pluralStringResource(R.plurals.model_parts, m.parts, m.parts) else null,
+            Format.context(m.contextLength)?.let { stringResource(R.string.models_ctx_chip, it) },
+          )
           .forEach { AssistChip(onClick = {}, label = { Text(it, style = MaterialTheme.typography.labelSmall) }) }
       }
       if (m.fit == Fit.WONT_FIT || m.fit == Fit.TIGHT) FitHint(m.fit)

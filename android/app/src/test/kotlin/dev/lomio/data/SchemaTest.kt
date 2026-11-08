@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class SchemaTest {
-  private val version = 3
+  private val version = 4
   private val schema = File("schemas/dev.lomio.data.db.LomioDatabase/$version.json")
 
   @Test

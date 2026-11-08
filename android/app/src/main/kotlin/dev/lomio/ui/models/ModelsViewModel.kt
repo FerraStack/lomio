@@ -5,12 +5,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.lomio.AppContainer
 import dev.lomio.data.ModelRepository
+import dev.lomio.data.partCount
 import dev.lomio.data.db.ModelSource
 import dev.lomio.data.db.downloadBytes
 import dev.lomio.data.db.hasVision
 import dev.lomio.data.hf.HfFile
 import dev.lomio.data.hf.HfSort
 import dev.lomio.data.hf.Projectors
+import dev.lomio.data.hf.Shards
 import dev.lomio.domain.MemoryFit
 import dev.lomio.domain.ModelShape
 import dev.lomio.engine.LoadOutcome
@@ -80,6 +82,7 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
                 quant = m.quant,
                 sizeBytes = m.downloadBytes,
                 vision = m.hasVision,
+                parts = m.partCount,
                 params = m.nParams,
                 contextLength = m.nCtxTrain,
                 arch = m.arch,
@@ -195,8 +198,9 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
             it.copy(
               filesLoading = false,
               projector = projector,
+              // The parts of a split model become one row (downloaded together, loaded via part 1).
               files =
-                files.map { f ->
+                Shards.group(files).map { f ->
                   val vision = projector != null && !f.isProjector
                   // Without the header we only know the size: estimate with weights + overhead.
                   val shape =

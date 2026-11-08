@@ -21,7 +21,8 @@ import org.junit.runner.RunWith
 /**
  * Builds a version-1 database from the committed schema JSON (the exact SQL Room 2.8 generated
  * for v1), fills it with a linear chat, runs every migration (v2: message tree, v3: vision
- * columns) and opens it with Room, which validates every table against the current entities.
+ * columns, v4: split-model parts) and opens it with Room, which validates every table against
+ * the current entities.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {
@@ -77,6 +78,8 @@ class MigrationTest {
       assertEquals(4, chats.searchMessages("kyoto").first().size)
       // v3: no projector and no attachments on old rows.
       assertEquals(null, db.messages().get("m0")!!.attachments)
+      // v4: no split parts on old rows.
+      assertEquals(emptyList<String>(), db.models().observeAll().first().mapNotNull { it.shards })
     } finally {
       db.close()
       context.deleteDatabase(name)
