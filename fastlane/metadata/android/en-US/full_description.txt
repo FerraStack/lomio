@@ -1,0 +1,27 @@
+<p>Lomio runs open language models on your phone. Download a model from Hugging Face (or import a GGUF file), load it, and chat. Everything happens on the device: no account, no analytics, no cloud. After the download, chats work offline.</p>
+
+<p><b>Chat</b></p>
+<ul>
+<li>Streaming replies with Markdown, tables and highlighted code with a Copy button</li>
+<li>A collapsible reasoning block for thinking models, with a Think switch</li>
+<li>Stop, regenerate (replies are kept as versions), edit and resend</li>
+<li>Images: ask vision models about photos you pick (no storage permission needed)</li>
+<li>A context meter; when a chat gets long, summarize it and continue</li>
+<li>History with search, pins and export to Markdown or JSON</li>
+</ul>
+
+<p><b>Models</b></p>
+<ul>
+<li>Search Hugging Face for GGUF models, or start from a short list of recommended ones</li>
+<li>Resumable downloads, checked against the file's checksum</li>
+<li>A memory check before each load warns when a model may not fit your phone</li>
+<li>Settings per model and per chat: system prompt, sampling, context size, chat template</li>
+<li>A storage screen shows what takes space and cleans up</li>
+</ul>
+
+<p><b>Engine</b></p>
+<p>Lomio uses llama.cpp, with CPU code tuned for each ARM generation. Reopening a long chat is fast: its state is kept on disk. GPU acceleration for Snapdragon (Adreno) phones is available as an experiment. A built-in benchmark measures speed on your phone.</p>
+
+<p>Models are large: plan 0.5–3 GB of storage per model and a phone with 6 GB of RAM or more for the bigger ones. Lomio itself contains no model.</p>
+
+<p>Lomio is open source (Apache-2.0).</p>

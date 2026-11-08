@@ -1,0 +1,87 @@
+name: Reproducible build
+
+# Builds the unsigned arm64 release APK twice, on two runners, in two different checkout paths
+# and without any build cache, then compares the APKs entry by entry (signature files ignored).
+# F-Droid rebuilds the app on its own servers; with a reproducible build it can publish the
+# developer-signed APK. See docs/RELEASING.md.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - .github/workflows/reproducible.yml
+      - scripts/ci/repro-compare.sh
+      - android/llama/src/main/cpp/CMakeLists.txt
+      - android/**/build.gradle.kts
+      - android/gradle/libs.versions.toml
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: reproducible-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Release build ${{ matrix.copy }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        copy: [a, b]
+    defaults:
+      run:
+        working-directory: checkout-${{ matrix.copy }}/android
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: "4"
+    steps:
+      # A different path per copy: absolute build paths that leak into the binaries show up.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          path: checkout-${{ matrix.copy }}
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+      - name: Install NDK and CMake
+        run: sdkmanager --install "ndk;30.0.16248370" "cmake;3.31.6" > /dev/null
+
+      # No ccache and no Gradle build cache: both builds compile everything themselves.
+      - name: Assemble the unsigned arm64 release APK
+        run: ./gradlew --no-daemon --no-build-cache --max-workers=4 -Plomio.abis=arm64-v8a assembleRelease
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.copy }}
+          path: checkout-${{ matrix.copy }}/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+
+  compare:
+    name: Compare the two APKs
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-a
+          path: a
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-b
+          path: b
+
+      - name: Compare (signature files excluded)
+        run: |
+          ls -l a/*.apk b/*.apk
+          bash scripts/ci/repro-compare.sh a/app-release-unsigned.apk b/app-release-unsigned.apk
