@@ -383,7 +383,8 @@
     <string name="gpu_title">GPU acceleration (experimental)</string>
     <string name="gpu_on_sub">Runs layers on the Adreno GPU with OpenCL. Often faster at reading long prompts, not always at writing; if the GPU fails, the model loads on the CPU.</string>
     <string name="gpu_unavailable">Not available: %1$s.</string>
-    <string name="gpu_layers">Layers on the GPU (99 = all)</string>
+    <string name="gpu_layers">Layers on the GPU</string>
+    <string name="gpu_layers_all">All</string>
     <string name="gpu_reason_unknown">not checked</string>
     <string name="gpu_reason_abi">the GPU backend is only built for 64-bit ARM phones</string>
     <string name="gpu_reason_qualcomm">needs a Snapdragon (Adreno) GPU</string>
@@ -398,6 +399,21 @@
     <string name="api_key_local_off">Off: any app on this phone can use the server without a key</string>
     <string name="api_no_key_note">No key needed: any app on this phone can use the server.</string>
     <string name="gpu_crash_notice">The app closed while loading a model on the GPU, so GPU acceleration was turned off.</string>
+    <string name="storage_chat_caches">Chat caches</string>
+    <string name="storage_chat_caches_sub">Let long chats continue without re-reading them. Clearing only makes the next reply in each chat start slower.</string>
+    <string name="storage_cleared_chat_caches">Cleared %1$s of chat caches</string>
+    <string name="chat_menu_summarize">Summarize &amp; continue</string>
+    <string name="context_full">Context %1$d%% full</string>
+    <string name="context_usage">This chat uses %1$s of %2$s tokens. When it\'s full, the oldest messages are left out.</string>
+    <string name="context_summarize_body">The model can summarize the conversation so far into a short note and continue from there. Earlier messages stay in the chat, but the model will only see the note.</string>
+    <string name="action_not_now">Not now</string>
+    <string name="action_collapse">Collapse</string>
+    <string name="action_expand">Expand</string>
+    <string name="summary_running">Summarizing the conversation…</string>
+    <string name="summary_done">Conversation summarized</string>
+    <string name="summary_failed">The summary failed; the model still sees the full chat.</string>
+    <string name="summary_stopped">Stopped; the model still sees the full chat.</string>
+    <string name="summary_note">The model now sees this summary instead of the messages above.</string>
     <plurals name="search_messages_count">
         <item quantity="one">%1$d message</item>
         <item quantity="other">%1$d messages</item>

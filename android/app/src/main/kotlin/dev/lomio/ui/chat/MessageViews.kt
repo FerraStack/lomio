@@ -467,12 +467,12 @@ fun SummaryNote(message: UiMessage, modifier: Modifier = Modifier) {
         Icon(Icons.Outlined.Summarize, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.size(8.dp))
         Text(
-          if (streaming) "Summarizing the conversation…" else "Conversation summarized",
+          stringResource(if (streaming) R.string.summary_running else R.string.summary_done),
           style = MaterialTheme.typography.labelLarge,
           color = MaterialTheme.colorScheme.primary,
           modifier = Modifier.weight(1f),
         )
-        if (!streaming) Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) "Collapse" else "Expand")
+        if (!streaming) Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, stringResource(if (expanded) R.string.action_collapse else R.string.action_expand))
       }
       when {
         message.content.isNotEmpty() ->
@@ -486,9 +486,9 @@ fun SummaryNote(message: UiMessage, modifier: Modifier = Modifier) {
       }
       Text(
         when (message.status) {
-          MessageStatus.ERROR -> "The summary failed; the model still sees the full chat."
-          MessageStatus.STOPPED -> "Stopped; the model still sees the full chat."
-          else -> "The model now sees this summary instead of the messages above."
+          MessageStatus.ERROR -> stringResource(R.string.summary_failed)
+          MessageStatus.STOPPED -> stringResource(R.string.summary_stopped)
+          else -> stringResource(R.string.summary_note)
         },
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,

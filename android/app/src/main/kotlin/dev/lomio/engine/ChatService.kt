@@ -150,7 +150,7 @@ class ChatService(
    */
   fun summarize(conversationId: String): Boolean =
     launchTurn {
-      val modelId = activeModelId() ?: return@launchTurn dispatch(GenEvent.Failed(null, "Load a model first"))
+      val modelId = activeModelId() ?: return@launchTurn dispatch(GenEvent.Failed(null, messages.loadModelFirst))
       val ctx = context(conversationId, modelId, parentId = null) ?: return@launchTurn
       if (ctx.history.none { it.role == "user" }) return@launchTurn
       val request =

@@ -802,13 +802,14 @@ private fun ContextMeter(usage: ContextUsage, onClick: () -> Unit) {
       usage.fraction >= 0.75f -> MaterialTheme.colorScheme.tertiary
       else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
+  val description = stringResource(R.string.context_full, usage.percent)
   Row(
     verticalAlignment = Alignment.CenterVertically,
     modifier =
       Modifier.clip(RoundedCornerShape(50))
         .clickable(onClick = onClick)
         .padding(horizontal = 8.dp, vertical = 6.dp)
-        .semantics(mergeDescendants = true) { contentDescription = "Context ${usage.percent}% full" },
+        .semantics(mergeDescendants = true) { contentDescription = description },
   ) {
     CircularProgressIndicator(
       progress = { usage.fraction },
@@ -826,18 +827,18 @@ private fun ContextMeter(usage: ContextUsage, onClick: () -> Unit) {
 private fun SummarizeDialog(usage: ContextUsage?, onConfirm: () -> Unit, onDismiss: () -> Unit) {
   AlertDialog(
     onDismissRequest = onDismiss,
-    title = { Text(usage?.let { "Context ${it.percent}% full" } ?: "Summarize & continue") },
+    title = { Text(usage?.let { stringResource(R.string.context_full, it.percent) } ?: stringResource(R.string.chat_menu_summarize)) },
     text = {
+      val numbers = java.text.NumberFormat.getIntegerInstance()
       Text(
-        (usage?.let {
-          "This chat uses ${String.format(java.util.Locale.US, "%,d", it.usedTokens)} of " +
-            "${String.format(java.util.Locale.US, "%,d", it.nCtx)} tokens. When it's full, the oldest messages are left out.\n\n"
-        } ?: "") +
-          "The model can summarize the conversation so far into a short note and continue from there. " +
-          "Earlier messages stay in the chat, but the model will only see the note."
+        listOfNotNull(
+            usage?.let { stringResource(R.string.context_usage, numbers.format(it.usedTokens), numbers.format(it.nCtx)) },
+            stringResource(R.string.context_summarize_body),
+          )
+          .joinToString("\n\n")
       )
     },
-    confirmButton = { TextButton(onClick = onConfirm) { Text("Summarize & continue") } },
-    dismissButton = { TextButton(onClick = onDismiss) { Text("Not now") } },
+    confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.chat_menu_summarize)) } },
+    dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_not_now)) } },
   )
 }
