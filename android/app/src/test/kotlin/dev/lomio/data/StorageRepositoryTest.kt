@@ -84,6 +84,25 @@ class StorageRepositoryTest {
   }
 
   @Test
+  fun chatCachesAreMeasuredAndClearedOnTheirOwn() = runTest {
+    val chatCaches = File(cache, "prompt-cache")
+    val repo = StorageRepository({ models }, { listOf(cache) }, { emptyList() }, chatCacheDir = { chatCaches }, clock = { now })
+    file(cache, "a.tmp", 10)
+    file(chatCaches, "c1.lpc", 500)
+    file(chatCaches, "c1.lpc.meta", 20)
+
+    val scan = repo.scan(emptyList())
+    assertEquals("temporary files exclude the chat caches", 10L, scan.cacheBytes)
+    assertEquals(520L, scan.chatCacheBytes)
+    assertEquals(530L, scan.totalBytes)
+
+    assertEquals(10L, repo.clearCache())
+    assertTrue("clearing temporary files keeps the chat caches", File(chatCaches, "c1.lpc").exists())
+    assertEquals(520L, repo.clearChatCaches())
+    assertTrue(chatCaches.isDirectory && chatCaches.list()!!.isEmpty())
+  }
+
+  @Test
   fun clearingTheCacheEmptiesItButKeepsTheFolder() = runTest {
     file(cache, "a.tmp", 10)
     file(cache, "nested/b.tmp", 20)

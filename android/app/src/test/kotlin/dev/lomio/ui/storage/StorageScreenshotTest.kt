@@ -22,6 +22,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollToNode
 
 /** Roborazzi screenshots of the Storage screen (same conventions as ui/ScreenshotTest). */
 @RunWith(AndroidJUnit4::class)
@@ -57,6 +60,7 @@ class StorageScreenshotTest {
           StorageModelRow("g1", "Gemma 3 1B", "Q4_K_M", 412_000_000, partial = true),
         ),
       chatsBytes = 3_400_000,
+      chatCacheBytes = 184_000_000,
       cacheBytes = 12_600_000,
       leftoverBytes = 640_000_000,
       leftoverCount = 2,
@@ -72,6 +76,17 @@ class StorageScreenshotTest {
   @Test fun storageEmptyLight() = shoot("storage_empty", dark = false) { StorageScreen(emptyLow, StorageActions()) }
 
   @Test fun storageEmptyDark() = shoot("storage_empty", dark = true) { StorageScreen(emptyLow, StorageActions()) }
+
+  private fun shootOther(dark: Boolean) {
+    setContent(dark) { StorageScreen(full, StorageActions()) }
+    compose.onNodeWithTag(STORAGE_LIST_TAG).performScrollToNode(hasText("Chat caches"))
+    compose.waitForIdle()
+    compose.onRoot().captureRoboImage("build/outputs/roborazzi/storage_other_${if (dark) "dark" else "light"}.png")
+  }
+
+  @Test fun storageOtherLight() = shootOther(dark = false)
+
+  @Test fun storageOtherDark() = shootOther(dark = true)
 
   @OptIn(ExperimentalRoborazziApi::class)
   private fun shootReview(dark: Boolean) {

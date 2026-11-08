@@ -417,6 +417,7 @@ fun LomioRoot(
               onBack = { backStack.removeAt(backStack.lastIndex) },
               onDelete = storageVm::delete,
               onClearCache = { storageVm.clearCache() },
+              onClearChatCaches = { storageVm.clearChatCaches() },
               onRemoveLeftovers = { storageVm.removeLeftovers() },
               onMessageShown = storageVm::messageShown,
             ),

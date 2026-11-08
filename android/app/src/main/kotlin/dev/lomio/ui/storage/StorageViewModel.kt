@@ -46,6 +46,7 @@ fun storageUiState(models: List<ModelEntity>, activeId: String?, scan: StorageSc
         .sortedWith(compareByDescending<StorageModelRow> { it.bytes }.thenBy { it.name.lowercase() }),
     chatsBytes = scan.chatsBytes,
     cacheBytes = scan.cacheBytes,
+    chatCacheBytes = scan.chatCacheBytes,
     leftoverBytes = scan.leftoverBytes,
     leftoverCount = scan.leftovers.size,
   )
@@ -78,6 +79,8 @@ class StorageViewModel(private val c: AppContainer, private val clock: () -> Lon
     if (rows.size == 1) c.text.getString(R.string.storage_deleted_one, rows[0].name, Format.bytes(freed))
     else c.text.getQuantityString(R.plurals.storage_deleted_many, rows.size, rows.size, Format.bytes(freed))
   }
+
+  fun clearChatCaches() = work { c.text.getString(R.string.storage_cleared_chat_caches, Format.bytes(c.storage.clearChatCaches())) }
 
   fun clearCache() = work { c.text.getString(R.string.storage_cleared_temp, Format.bytes(c.storage.clearCache())) }
 
