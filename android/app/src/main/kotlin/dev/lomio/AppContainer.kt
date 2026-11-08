@@ -32,6 +32,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import okhttp3.OkHttpClient
+import android.content.res.Resources
+import dev.lomio.engine.EngineText
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 private val Context.apiServerStore by preferencesDataStore(name = "api_server")
@@ -39,6 +41,10 @@ private val Context.apiServerStore by preferencesDataStore(name = "api_server")
 /** Manual DI: one instance per process, created by [LomioApp]. */
 class AppContainer(context: Context) {
   val appContext: Context = context.applicationContext
+
+  /** Strings for code outside Compose (view models, workers, services), in the app's language. */
+  val text: Resources
+    get() = appContext.resources
 
   val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -78,8 +84,17 @@ class AppContainer(context: Context) {
     )
   val crashGuard = CrashGuard(appContext.getSharedPreferences("crash_guard", Context.MODE_PRIVATE))
   val memory = AndroidMemoryProvider(appContext)
-  val modelManager = ModelManager(engine, models, settings, crashGuard, memory)
-  val chatService = ChatService(engine, modelManager, chats, models, settings, scope)
+  private val engineText =
+    EngineText(
+      loadModelFirst = text.getString(R.string.err_load_first),
+      generationStopped = text.getString(R.string.err_generation_stopped),
+      generationFailed = text.getString(R.string.message_failed),
+      modelNotFound = text.getString(R.string.err_model_not_found),
+      notDownloaded = { name -> text.getString(R.string.err_not_downloaded, name) },
+      loadFailed = text.getString(R.string.err_load_failed),
+    )
+  val modelManager = ModelManager(engine, models, settings, crashGuard, memory, engineText)
+  val chatService = ChatService(engine, modelManager, chats, models, settings, scope, engineText)
   val apiServer =
     ApiServerController(
       appContext,

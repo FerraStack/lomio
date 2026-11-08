@@ -46,6 +46,7 @@ class ChatService(
   private val models: ModelRepository,
   private val settings: SettingsRepository,
   private val scope: CoroutineScope,
+  private val text: EngineText = EngineText(),
 ) {
   constructor(
     engine: InferenceEngine,
@@ -54,7 +55,8 @@ class ChatService(
     models: ModelRepository,
     settings: SettingsRepository,
     scope: CoroutineScope,
-  ) : this(engine, { manager.activeModelId.value }, chats, models, settings, scope)
+    text: EngineText = EngineText(),
+  ) : this(engine, { manager.activeModelId.value }, chats, models, settings, scope, text)
 
   private val _state = MutableStateFlow(GenerationState())
   val state: StateFlow<GenerationState> = _state.asStateFlow()
@@ -90,7 +92,7 @@ class ChatService(
     val trimmed = text.trim()
     if (trimmed.isEmpty() && attachments.isEmpty()) return false
     return launchTurn {
-      val modelId = activeModelId() ?: return@launchTurn dispatch(GenEvent.Failed(null, "Load a model first"))
+      val modelId = activeModelId() ?: return@launchTurn dispatch(GenEvent.Failed(null, text.loadModelFirst))
       val conversation = chats.conversation(conversationId) ?: return@launchTurn
       val isFirst = chats.messages(conversationId).none { it.role == MessageRole.USER }
       chats.addMessage(conversationId, MessageRole.USER, trimmed, attachments = attachments)
@@ -107,7 +109,7 @@ class ChatService(
    */
   fun regenerate(conversationId: String, enableThinking: Boolean = true, messageId: String? = null): Boolean =
     launchTurn {
-      val modelId = activeModelId() ?: return@launchTurn dispatch(GenEvent.Failed(null, "Load a model first"))
+      val modelId = activeModelId() ?: return@launchTurn dispatch(GenEvent.Failed(null, text.loadModelFirst))
       val branch = chats.messages(conversationId)
       val target = messageId?.let { id -> branch.firstOrNull { it.id == id } } ?: branch.lastOrNull() ?: return@launchTurn
       // Reply to the question above the target (or to the target itself if it is a question).
@@ -119,7 +121,7 @@ class ChatService(
   fun edit(conversationId: String, messageId: String, newText: String, enableThinking: Boolean = true): Boolean {
     return launchTurn {
       // Check the model before touching history: without one, the edit would be left unanswered.
-      val modelId = activeModelId() ?: return@launchTurn dispatch(GenEvent.Failed(null, "Load a model first"))
+      val modelId = activeModelId() ?: return@launchTurn dispatch(GenEvent.Failed(null, text.loadModelFirst))
       val original = chats.message(messageId) ?: return@launchTurn
       val images = Attachments.decode(original.attachments)
       if (newText.isBlank() && images.isEmpty()) return@launchTurn
@@ -262,7 +264,7 @@ class ChatService(
       withContext(NonCancellable) {
         chats.finishMessage(messageId, content, reasoning, MessageStatus.ERROR, null)
       }
-      dispatch(GenEvent.Failed(messageId, e.message ?: "Generation failed"))
+      dispatch(GenEvent.Failed(messageId, e.message ?: text.generationFailed))
       settled = true
     } finally {
       // Whatever happened (scope cancelled, engine closed the flow without Done), never leave
@@ -271,7 +273,7 @@ class ChatService(
         withContext(NonCancellable) {
           chats.finishMessage(messageId, content, reasoning, MessageStatus.STOPPED, null)
         }
-        dispatch(GenEvent.Failed(messageId, "Generation stopped"))
+        dispatch(GenEvent.Failed(messageId, text.generationStopped))
       }
     }
   }

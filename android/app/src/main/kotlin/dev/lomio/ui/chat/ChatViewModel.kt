@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import dev.lomio.R
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(private val c: AppContainer) : ViewModel() {
@@ -110,12 +111,13 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
           thinkingEnabled = think,
           systemPrompt = conv?.systemPrompt,
           gpuNotice = bits.gpuNotice,
-          crashedModelName = bits.crashedId?.let { cid -> bits.models.firstOrNull { it.id == cid }?.displayName ?: "the last model" },
+          crashedModelName = bits.crashedId?.let { cid -> bits.models.firstOrNull { it.id == cid }?.displayName ?: c.text.getString(R.string.the_last_model) },
           loadError =
             loadErr
               ?: (bits.engine as? EngineState.Failed)?.takeIf { it != dismissed }?.let { f ->
-                val name = bits.models.firstOrNull { it.filePath == f.path }?.displayName ?: "the model"
-                "Couldn't load $name: ${f.message}"
+                val name = bits.models.firstOrNull { it.filePath == f.path }?.displayName
+                if (name != null) c.text.getString(R.string.err_couldnt_load_named, name, f.message)
+                else c.text.getString(R.string.err_couldnt_load, f.message)
               },
           error = err ?: gen.error,
           genBase = SettingsResolver.chatBase(settings.generation, if (active != null) bits.modelGen else null),
@@ -212,7 +214,7 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
         is LoadOutcome.Loaded -> Unit
         // Memory warning: the app-wide confirmation dialog takes over.
         is LoadOutcome.NeedsConfirmation -> Unit
-        is LoadOutcome.Failed -> loadError.value = "Couldn't load the model: ${r.message}"
+        is LoadOutcome.Failed -> loadError.value = c.text.getString(R.string.err_couldnt_load, r.message)
       }
     }
 

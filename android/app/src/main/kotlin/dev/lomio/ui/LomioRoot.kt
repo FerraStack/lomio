@@ -64,6 +64,8 @@ import dev.lomio.ui.storage.StorageActions
 import dev.lomio.ui.storage.StorageScreen
 import dev.lomio.ui.storage.StorageViewModel
 import kotlinx.coroutines.launch
+import androidx.compose.ui.res.stringResource
+import dev.lomio.R
 
 /** Screens on the back stack. The chat screen shows whichever conversation ChatViewModel has open. */
 enum class Screen { CHAT, SEARCH, MODELS, HF_SEARCH, MODEL_SETTINGS, SETTINGS, BENCHMARK, ABOUT, STORAGE }
@@ -431,16 +433,15 @@ fun MemoryWarningDialog(p: PendingLoad, onConfirm: () -> Unit, onDismiss: () -> 
   val avail = Format.bytes(p.memory.availableBytes)
   AlertDialog(
     onDismissRequest = onDismiss,
-    title = { Text(if (p.fit == Fit.WONT_FIT) "Probably won't fit in memory" else "Tight on memory") },
+    title = { Text(stringResource(if (p.fit == Fit.WONT_FIT) R.string.memory_wont_fit_title else R.string.memory_tight_title)) },
     text = {
       Text(
-        "${p.modelName} needs about $need; about $avail is available. " +
-          if (p.fit == Fit.WONT_FIT) "Android will likely close the app while loading. Try a smaller model or context size."
-          else "Other apps may be closed, or Lomio may be stopped, while it runs."
+        stringResource(R.string.memory_needs, p.modelName, need, avail) + " " +
+          stringResource(if (p.fit == Fit.WONT_FIT) R.string.memory_wont_fit_body else R.string.memory_tight_body)
       )
     },
-    confirmButton = { TextButton(onClick = onConfirm) { Text("Load anyway") } },
-    dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.memory_load_anyway)) } },
+    dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
   )
 }
 
