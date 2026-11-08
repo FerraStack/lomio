@@ -61,8 +61,13 @@ import dev.lomio.ui.settings.OverridableGenerationControls
 import dev.lomio.ui.settings.OverridableSlider
 import dev.lomio.ui.settings.OverridableSwitch
 import kotlin.math.roundToInt
+import androidx.compose.ui.res.stringResource
+import dev.lomio.R
+import androidx.annotation.StringRes
+import androidx.compose.ui.platform.LocalContext
+import dev.lomio.ui.settings.InheritedFrom
 
-enum class TemplateMode(val label: String) { GGUF("From model"), PRESET("Preset"), CUSTOM("Custom") }
+enum class TemplateMode(@StringRes val label: Int) { GGUF(R.string.ms_tmpl_gguf), PRESET(R.string.ms_tmpl_preset), CUSTOM(R.string.ms_tmpl_custom) }
 
 sealed interface TemplatePreview {
   data object Loading : TemplatePreview
@@ -122,11 +127,11 @@ fun ModelSettingsScreen(state: ModelSettingsUiState, actions: ModelSettingsActio
     topBar = {
       TopAppBar(
         navigationIcon = {
-          IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
+          IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.action_back)) }
         },
         title = {
           Column {
-            Text("Model settings", maxLines = 1)
+            Text(stringResource(R.string.ms_title), maxLines = 1)
             Text(
               state.name,
               style = MaterialTheme.typography.labelMedium,
@@ -145,12 +150,12 @@ fun ModelSettingsScreen(state: ModelSettingsUiState, actions: ModelSettingsActio
     ) {
       if (state.needsReload) ReloadBanner(state.name, actions.onReload)
 
-      Section("General", first = true)
+      Section(stringResource(R.string.ms_general), first = true)
       KeyedTextField(
         key = "name-${state.version}",
         initial = state.name,
         onValueChange = actions.onRename,
-        label = "Name",
+        label = stringResource(R.string.ms_name),
         singleLine = true,
         supporting = state.subtitle,
       )
@@ -158,20 +163,20 @@ fun ModelSettingsScreen(state: ModelSettingsUiState, actions: ModelSettingsActio
         key = "prompt-${state.version}",
         initial = state.systemPrompt,
         onValueChange = actions.onSystemPrompt,
-        label = "System prompt",
+        label = stringResource(R.string.ms_system_prompt),
         minLines = 3,
         supporting =
-          if (state.globalSystemPrompt.isBlank()) "Empty: no system prompt"
-          else "Empty: uses the global prompt “${state.globalSystemPrompt.lineSequence().first().take(60)}”",
+          if (state.globalSystemPrompt.isBlank()) stringResource(R.string.ms_prompt_empty_none)
+          else stringResource(R.string.ms_prompt_empty_global, state.globalSystemPrompt.lineSequence().first().take(60)),
       )
 
-      Section("Generation", "Overrides the global defaults for chats with this model")
-      OverridableGenerationControls(state.genBase, state.gen, inheritedFrom = "global", onChange = actions.onGen)
+      Section(stringResource(R.string.ms_generation), stringResource(R.string.ms_generation_sub))
+      OverridableGenerationControls(state.genBase, state.gen, inheritedFrom = InheritedFrom.GLOBAL, onChange = actions.onGen)
 
-      Section("Load", "Applied the next time the model loads")
+      Section(stringResource(R.string.ms_load), stringResource(R.string.ms_load_sub))
       LoadControls(state, actions.onLoad)
 
-      Section("Chat template", "How messages are formatted for the model")
+      Section(stringResource(R.string.ms_template), stringResource(R.string.ms_template_sub))
       TemplateControls(state, actions)
 
       HorizontalDivider(Modifier.padding(top = 16.dp))
@@ -179,7 +184,7 @@ fun ModelSettingsScreen(state: ModelSettingsUiState, actions: ModelSettingsActio
         onClick = { confirmReset = true },
         modifier = Modifier.padding(vertical = 8.dp),
       ) {
-        Text("Reset to defaults", color = MaterialTheme.colorScheme.error)
+        Text(stringResource(R.string.ms_reset_defaults), color = MaterialTheme.colorScheme.error)
       }
       Spacer(Modifier.size(16.dp))
     }
@@ -188,12 +193,12 @@ fun ModelSettingsScreen(state: ModelSettingsUiState, actions: ModelSettingsActio
   if (confirmReset) {
     AlertDialog(
       onDismissRequest = { confirmReset = false },
-      title = { Text("Reset model settings?") },
-      text = { Text("Generation, load and template settings of ${state.name} go back to the global defaults. The name is kept.") },
+      title = { Text(stringResource(R.string.ms_reset_title)) },
+      text = { Text(stringResource(R.string.ms_reset_body, state.name)) },
       confirmButton = {
-        TextButton(onClick = { confirmReset = false; actions.onReset() }) { Text("Reset") }
+        TextButton(onClick = { confirmReset = false; actions.onReset() }) { Text(stringResource(R.string.ms_reset)) }
       },
-      dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+      dismissButton = { TextButton(onClick = { confirmReset = false }) { Text(stringResource(R.string.action_cancel)) } },
     )
   }
 }
@@ -208,12 +213,12 @@ private fun ReloadBanner(name: String, onReload: () -> Unit) {
     Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
       Icon(Icons.Outlined.Info, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
       Text(
-        "Reload $name to apply the new load settings.",
+        stringResource(R.string.ms_reload_note, name),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSecondaryContainer,
         modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
       )
-      TextButton(onClick = onReload) { Text("Reload") }
+      TextButton(onClick = onReload) { Text(stringResource(R.string.ms_reload)) }
     }
   }
 }
@@ -224,47 +229,49 @@ private fun LoadControls(state: ModelSettingsUiState, onLoad: (LoadSettings) -> 
   val own = state.load
   val maxCtx = ((state.trainedContext ?: 32768).coerceIn(512, 32768) / 512) * 512
   val ctxSteps = (maxCtx / 512 - 2).coerceAtLeast(0)
+  val res = LocalContext.current.resources
+  val auto = stringResource(R.string.ms_auto)
   OverridableSlider(
-    "Context size",
+    stringResource(R.string.ms_ctx),
     (base.nCtx ?: 4096).coerceAtMost(maxCtx).toFloat(),
     own.nCtx?.toFloat(),
     512f..maxCtx.toFloat(),
     ctxSteps,
-    "global",
-    format = { "${it.roundToInt()} tokens" },
+    InheritedFrom.GLOBAL,
+    format = { it.roundToInt().let { n -> res.getQuantityString(R.plurals.tokens_count, n, n) } },
   ) {
     onLoad(own.copy(nCtx = it?.let { v -> ((v / 512).roundToInt().coerceAtLeast(1)) * 512 }))
   }
   state.contextFit?.let { FitLine(it, state.trainedContext) }
   OverridableSlider(
-    "CPU threads",
+    stringResource(R.string.ms_threads),
     (base.nThreads ?: 0).toFloat(),
     own.nThreads?.toFloat(),
     0f..8f,
     7,
-    "global",
-    format = { if (it.roundToInt() == 0) "Auto" else it.roundToInt().toString() },
+    InheritedFrom.GLOBAL,
+    format = { if (it.roundToInt() == 0) auto else it.roundToInt().toString() },
   ) {
     onLoad(own.copy(nThreads = it?.roundToInt()))
   }
   val batchIndex = { n: Int -> BATCH_SIZES.indexOfFirst { it >= n }.let { i -> if (i < 0) BATCH_SIZES.lastIndex else i } }
   OverridableSlider(
-    "Batch size",
+    stringResource(R.string.ms_batch),
     batchIndex(base.nBatch ?: 512).toFloat(),
     own.nBatch?.let { batchIndex(it).toFloat() },
     0f..BATCH_SIZES.lastIndex.toFloat(),
     BATCH_SIZES.size - 2,
-    "global",
+    InheritedFrom.GLOBAL,
     format = { BATCH_SIZES[it.roundToInt().coerceIn(0, BATCH_SIZES.lastIndex)].toString() },
   ) {
     onLoad(own.copy(nBatch = it?.let { v -> BATCH_SIZES[v.roundToInt().coerceIn(0, BATCH_SIZES.lastIndex)] }))
   }
   OverridableSwitch(
-    "Memory-map the model file",
-    "Faster loads; turn off if loads fail on a low-RAM phone",
+    stringResource(R.string.ms_mmap),
+    stringResource(R.string.ms_mmap_sub),
     base.useMmap ?: true,
     own.useMmap,
-    "global",
+    InheritedFrom.GLOBAL,
   ) {
     onLoad(own.copy(useMmap = it))
   }
@@ -274,14 +281,14 @@ private fun LoadControls(state: ModelSettingsUiState, onLoad: (LoadSettings) -> 
 private fun FitLine(fit: Fit, trained: Int?) {
   val (text, color, icon) =
     when (fit) {
-      Fit.FITS -> Triple("Fits in memory at this context size", MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
-      Fit.TIGHT -> Triple("Tight on memory at this context size", MaterialTheme.colorScheme.tertiary, Icons.Outlined.WarningAmber)
-      Fit.WONT_FIT -> Triple("May not fit in memory at this context size", MaterialTheme.colorScheme.error, Icons.Outlined.WarningAmber)
+      Fit.FITS -> Triple(stringResource(R.string.ms_fit_fits), MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
+      Fit.TIGHT -> Triple(stringResource(R.string.ms_fit_tight), MaterialTheme.colorScheme.tertiary, Icons.Outlined.WarningAmber)
+      Fit.WONT_FIT -> Triple(stringResource(R.string.ms_fit_wont), MaterialTheme.colorScheme.error, Icons.Outlined.WarningAmber)
     }
   Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 4.dp)) {
     Icon(icon, null, Modifier.size(16.dp), tint = color)
     Text(
-      text + (trained?.let { " · trained on $it" } ?: ""),
+      listOfNotNull(text, trained?.let { stringResource(R.string.ms_trained_on, it.toString()) }).joinToString(" · "),
       style = MaterialTheme.typography.labelMedium,
       color = color,
       modifier = Modifier.padding(start = 6.dp),
@@ -299,15 +306,15 @@ private fun TemplateControls(state: ModelSettingsUiState, actions: ModelSettings
         onClick = { actions.onTemplateMode(mode) },
         shape = SegmentedButtonDefaults.itemShape(i, TemplateMode.entries.size),
       ) {
-        Text(mode.label, maxLines = 1)
+        Text(stringResource(mode.label), maxLines = 1)
       }
     }
   }
   when (state.templateMode) {
     TemplateMode.GGUF ->
       Text(
-        if (state.ggufHasTemplate) "Uses the Jinja template stored in the GGUF file."
-        else "This GGUF has no chat template, so ChatML is used.",
+        if (state.ggufHasTemplate) stringResource(R.string.ms_tmpl_uses_gguf)
+        else stringResource(R.string.ms_tmpl_chatml),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
@@ -317,10 +324,10 @@ private fun TemplateControls(state: ModelSettingsUiState, actions: ModelSettings
         key = "tmpl-${state.version}",
         initial = state.customTemplate,
         onValueChange = actions.onCustomTemplate,
-        label = "Jinja template",
+        label = stringResource(R.string.ms_tmpl_jinja),
         minLines = 6,
         monospace = true,
-        supporting = "Rendered by llama.cpp's Jinja engine; messages, add_generation_prompt, bos_token and eos_token are available.",
+        supporting = stringResource(R.string.ms_tmpl_jinja_sub),
       )
   }
   TemplatePreviewCard(state.preview)
@@ -336,7 +343,7 @@ private fun PresetPicker(presetId: String, onPreset: (String) -> Unit) {
       value = current.label,
       onValueChange = {},
       readOnly = true,
-      label = { Text("Preset") },
+      label = { Text(stringResource(R.string.ms_preset)) },
       trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
       modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
     )
@@ -356,10 +363,10 @@ private fun TemplatePreviewCard(preview: TemplatePreview) {
     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
   ) {
     Column(Modifier.padding(12.dp).semantics { liveRegion = LiveRegionMode.Polite }) {
-      Text("Preview", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(bottom = 6.dp))
+      Text(stringResource(R.string.ms_preview), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(bottom = 6.dp))
       when (preview) {
         TemplatePreview.Loading ->
-          Text("Rendering…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+          Text(stringResource(R.string.ms_rendering), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         is TemplatePreview.Rendered ->
           SelectionContainer {
             Text(
@@ -372,7 +379,7 @@ private fun TemplatePreviewCard(preview: TemplatePreview) {
           Row(verticalAlignment = Alignment.Top) {
             Icon(Icons.Outlined.ErrorOutline, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
             Text(
-              "This template doesn't render: ${preview.message}. The model's own template is used until it is fixed.",
+              stringResource(R.string.ms_tmpl_error, preview.message),
               style = MaterialTheme.typography.bodySmall,
               color = MaterialTheme.colorScheme.error,
               modifier = Modifier.padding(start = 8.dp),

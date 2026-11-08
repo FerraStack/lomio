@@ -27,9 +27,18 @@ import androidx.compose.ui.unit.dp
 import dev.lomio.domain.GenerationSettings
 import java.util.Locale
 import kotlin.math.roundToInt
+import androidx.compose.ui.res.stringResource
+import dev.lomio.R
+import androidx.annotation.StringRes
+
+/** The broader settings layer a value comes from when this layer doesn't set it. */
+enum class InheritedFrom(@StringRes val from: Int, @StringRes val reset: Int) {
+  GLOBAL(R.string.override_from_global, R.string.override_reset_global),
+  MODEL(R.string.override_from_model, R.string.override_reset_model),
+}
 
 /**
- * A setting that is either inherited from a broader layer ([inheritedFrom], e.g. "global") or
+ * A setting that is either inherited from a broader layer ([inheritedFrom]) or
  * overridden here. Overridden rows show their value in the accent color with a reset button;
  * inherited rows say where the value comes from.
  */
@@ -38,20 +47,22 @@ private fun OverrideHeader(
   label: String,
   valueText: String,
   overridden: Boolean,
-  inheritedFrom: String,
+  inheritedFrom: InheritedFrom,
   onReset: () -> Unit,
 ) {
+  val from = stringResource(inheritedFrom.from)
+  val state = if (overridden) stringResource(R.string.override_custom_state) else from
   Row(
     verticalAlignment = Alignment.CenterVertically,
     modifier =
       Modifier.fillMaxWidth().heightIn(min = 40.dp).semantics {
-        stateDescription = if (overridden) "Custom value" else "Inherited from $inheritedFrom"
+        stateDescription = state
       },
   ) {
     Column(Modifier.weight(1f)) {
       Text(label, style = MaterialTheme.typography.bodyLarge)
       Text(
-        if (overridden) "Custom" else "From $inheritedFrom",
+        if (overridden) stringResource(R.string.override_custom) else from,
         style = MaterialTheme.typography.labelSmall,
         color = if (overridden) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
       )
@@ -64,7 +75,7 @@ private fun OverrideHeader(
     )
     if (overridden) {
       IconButton(onClick = onReset, modifier = Modifier.size(40.dp)) {
-        Icon(Icons.Outlined.RestartAlt, "Reset $label to the $inheritedFrom value", Modifier.size(20.dp))
+        Icon(Icons.Outlined.RestartAlt, stringResource(inheritedFrom.reset, label), Modifier.size(20.dp))
       }
     }
   }
@@ -77,7 +88,7 @@ fun OverridableSlider(
   own: Float?,
   range: ClosedFloatingPointRange<Float>,
   steps: Int,
-  inheritedFrom: String,
+  inheritedFrom: InheritedFrom,
   format: (Float) -> String = { String.format(Locale.US, "%.2f", it) },
   onChange: (Float?) -> Unit,
 ) {
@@ -103,7 +114,7 @@ fun OverridableSwitch(
   subtitle: String?,
   base: Boolean,
   own: Boolean?,
-  inheritedFrom: String,
+  inheritedFrom: InheritedFrom,
   onChange: (Boolean?) -> Unit,
 ) {
   Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -125,18 +136,19 @@ fun OverridableSwitch(
 fun OverridableGenerationControls(
   base: GenerationSettings,
   own: GenerationSettings,
-  inheritedFrom: String,
+  inheritedFrom: InheritedFrom,
   onChange: (GenerationSettings) -> Unit,
 ) {
   val d = GenerationSettings.DEFAULTS
+  val unlimited = stringResource(R.string.gen_unlimited)
   Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-    OverridableSlider("Temperature", base.temperature ?: d.temperature!!, own.temperature, 0f..2f, 39, inheritedFrom) {
+    OverridableSlider(stringResource(R.string.gen_temperature), base.temperature ?: d.temperature!!, own.temperature, 0f..2f, 39, inheritedFrom) {
       onChange(own.copy(temperature = it))
     }
-    OverridableSlider("Top-p", base.topP ?: d.topP!!, own.topP, 0f..1f, 19, inheritedFrom) { onChange(own.copy(topP = it)) }
-    OverridableSlider("Min-p", base.minP ?: d.minP!!, own.minP, 0f..0.5f, 49, inheritedFrom) { onChange(own.copy(minP = it)) }
+    OverridableSlider(stringResource(R.string.gen_top_p), base.topP ?: d.topP!!, own.topP, 0f..1f, 19, inheritedFrom) { onChange(own.copy(topP = it)) }
+    OverridableSlider(stringResource(R.string.gen_min_p), base.minP ?: d.minP!!, own.minP, 0f..0.5f, 49, inheritedFrom) { onChange(own.copy(minP = it)) }
     OverridableSlider(
-      "Top-k",
+      stringResource(R.string.gen_top_k),
       (base.topK ?: d.topK!!).toFloat(),
       own.topK?.toFloat(),
       0f..100f,
@@ -147,7 +159,7 @@ fun OverridableGenerationControls(
       onChange(own.copy(topK = it?.roundToInt()))
     }
     OverridableSlider(
-      "Repeat penalty",
+      stringResource(R.string.gen_repeat_penalty),
       base.repeatPenalty ?: d.repeatPenalty!!,
       own.repeatPenalty,
       1f..1.5f,
@@ -157,13 +169,13 @@ fun OverridableGenerationControls(
       onChange(own.copy(repeatPenalty = it))
     }
     OverridableSlider(
-      "Max reply tokens",
+      stringResource(R.string.gen_max_reply_tokens),
       (base.maxTokens ?: d.maxTokens!!).coerceAtLeast(0).toFloat(),
       own.maxTokens?.coerceAtLeast(0)?.toFloat(),
       0f..4096f,
       31,
       inheritedFrom,
-      format = { if (it.roundToInt() == 0) "Unlimited" else it.roundToInt().toString() },
+      format = { if (it.roundToInt() == 0) unlimited else it.roundToInt().toString() },
     ) {
       onChange(own.copy(maxTokens = it?.roundToInt()?.let { v -> if (v == 0) -1 else v }))
     }

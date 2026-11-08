@@ -105,6 +105,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.res.stringResource
 import dev.lomio.R
 import dev.lomio.ui.components.chatTitle
+import dev.lomio.ui.settings.InheritedFrom
 
 enum class ModelStatus { NONE, LOADING, LOADED, FAILED }
 
@@ -620,7 +621,7 @@ fun ChatGenerationSheet(
   onDismiss: () -> Unit,
   sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
 ) {
-  val inherited = if (state.modelName != null) "model" else "global"
+  val inherited = if (state.modelName != null) InheritedFrom.MODEL else InheritedFrom.GLOBAL
   ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
       Text(stringResource(R.string.chat_gen_title), style = MaterialTheme.typography.titleMedium)
