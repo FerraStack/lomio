@@ -34,6 +34,8 @@ import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import android.app.NotificationManager
+import dev.lomio.api.ApiServerService
 
 /**
  * The local OpenAI-compatible server on a real device with the real engine: switched on from
@@ -167,6 +169,9 @@ class ApiServerEndToEndTest {
       java.net.Socket("127.0.0.1", port).close()
       fail("server still listening after it was switched off")
     } catch (_: ConnectException) {}
+    // ...and its ongoing notification is gone too.
+    val nm = app.getSystemService(NotificationManager::class.java)
+    compose.waitUntil(5_000) { nm.activeNotifications.none { it.id == ApiServerService.NOTIFICATION_ID } }
   }
 
   companion object {
