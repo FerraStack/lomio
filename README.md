@@ -63,6 +63,8 @@ stats line. arm64 phones are not tested yet:
 - A local benchmark (pp/tg tokens per second, and where the model runs).
 - Local API server (off by default): an OpenAI-compatible endpoint for other apps, using the
   loaded model. See [Local API server](#local-api-server).
+- English, Russian and Ukrainian, with proper plural forms and localized size units ("2,37 ГБ").
+  On Android 13+ the language can be set for Lomio alone in system settings → Apps → Lomio.
 
 Not done yet: split GGUF files, a vision projector for imported (local) models, a tablet layout. Screenshots of every screen are
 posted by CI on each pull request; README screenshots are a TODO.
