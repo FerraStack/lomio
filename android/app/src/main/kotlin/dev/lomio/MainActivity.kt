@@ -46,7 +46,8 @@ class MainActivity : ComponentActivity() {
 
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
-    setIntent(intent)
+    // Handled right here; no setIntent(): getIntent() stays the launch intent (which is also
+    // how ActivityScenario recognises this activity in instrumented tests).
     LaunchIntents.parse(intent)?.let { launch.value = it }
   }
 }
