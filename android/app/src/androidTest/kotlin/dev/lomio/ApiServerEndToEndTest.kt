@@ -88,7 +88,22 @@ class ApiServerEndToEndTest {
       c.apiServer.settings.update { it.copy(port = PORT, lan = false) }
       c.models.registerLocalFile(dest, displayName = "Stories (api e2e)")
     }
-    val loaded = runBlocking { c.modelManager.load(model.id, force = true) }
+    try {
+      exercise(model.id)
+    } finally {
+      // Never leave the server running or the model loaded for the next test class.
+      runBlocking {
+        c.apiServer.setEnabled(false).join() // also stops the foreground service
+        c.apiServer.stopServer()
+        c.modelManager.unload()
+        c.models.delete(model.id)
+      }
+    }
+  }
+
+  private fun exercise(modelId: String) {
+    val c = app.container
+    val loaded = runBlocking { c.modelManager.load(modelId, force = true) }
     assertTrue("load failed: $loaded", loaded is LoadOutcome.Loaded)
 
     // Chat → drawer → Settings → switch the server on.
@@ -143,11 +158,6 @@ class ApiServerEndToEndTest {
       http.newCall(Request.Builder().url("$base/models").build()).execute().close()
       fail("server still listening after it was switched off")
     } catch (_: ConnectException) {}
-
-    runBlocking {
-      c.modelManager.unload()
-      c.models.delete(model.id)
-    }
   }
 
   companion object {
