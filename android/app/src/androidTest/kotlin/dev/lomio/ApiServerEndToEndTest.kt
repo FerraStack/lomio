@@ -163,7 +163,6 @@ class ApiServerEndToEndTest {
     serverSwitch().performScrollTo().performClick()
     compose.waitUntil(20_000) { c.apiServer.status.value is ApiServerStatus.Stopped && !c.apiServer.isRunning }
     // A raw connect: an HTTP client may report a closed listener as a reset instead.
-    val port = base.substringAfterLast(':').substringBefore('/').toInt()
     try {
       java.net.Socket("127.0.0.1", port).close()
       fail("server still listening after it was switched off")
