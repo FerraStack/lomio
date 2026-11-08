@@ -76,6 +76,8 @@ import dev.lomio.domain.GpuSupport
 import dev.lomio.domain.LoadSettings
 import java.util.Locale
 import kotlin.math.roundToInt
+import androidx.compose.ui.res.stringResource
+import dev.lomio.R
 
 /** Global settings (RESEARCH.md §9.3). Every change is applied immediately via [onChange]. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,8 +103,8 @@ fun SettingsScreen(
     modifier = modifier,
     topBar = {
       TopAppBar(
-        title = { Text("Settings") },
-        navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Outlined.Menu, "Open menu") } },
+        title = { Text(stringResource(R.string.settings_title)) },
+        navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Outlined.Menu, stringResource(R.string.action_open_menu)) } },
       )
     },
   ) { padding ->
@@ -110,8 +112,8 @@ fun SettingsScreen(
       Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
       verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-      Section("Appearance")
-      Text("Theme", style = MaterialTheme.typography.bodyLarge)
+      Section(stringResource(R.string.settings_appearance))
+      Text(stringResource(R.string.settings_theme), style = MaterialTheme.typography.bodyLarge)
       SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         ThemeMode.entries.forEachIndexed { i, mode ->
           SegmentedButton(
@@ -119,37 +121,45 @@ fun SettingsScreen(
             onClick = { onChange { it.copy(theme = mode) } },
             shape = SegmentedButtonDefaults.itemShape(i, ThemeMode.entries.size),
           ) {
-            Text(mode.name.lowercase().replaceFirstChar { it.uppercase() })
+            Text(
+              stringResource(
+                when (mode) {
+                  ThemeMode.SYSTEM -> R.string.theme_system
+                  ThemeMode.LIGHT -> R.string.theme_light
+                  ThemeMode.DARK -> R.string.theme_dark
+                }
+              )
+            )
           }
         }
       }
-      SwitchRow("Dynamic color", "Use colors from your wallpaper (Android 12+)", settings.dynamicColor) { v ->
+      SwitchRow(stringResource(R.string.settings_dynamic_color), stringResource(R.string.settings_dynamic_color_sub), settings.dynamicColor) { v ->
         onChange { it.copy(dynamicColor = v) }
       }
 
-      Section("Chat")
+      Section(stringResource(R.string.settings_chat))
       LocalTextField(
         initial = settings.systemPrompt,
         onValueChange = { v -> onChange { it.copy(systemPrompt = v) } },
-        label = { Text("Default system prompt") },
+        label = { Text(stringResource(R.string.settings_default_system_prompt)) },
         minLines = 3,
         modifier = Modifier.fillMaxWidth(),
       )
-      SwitchRow("Show generation stats", "Tokens, speed and time to first token under replies", settings.showStats) { v ->
+      SwitchRow(stringResource(R.string.settings_show_stats), stringResource(R.string.settings_show_stats_sub), settings.showStats) { v ->
         onChange { it.copy(showStats = v) }
       }
-      SwitchRow("Keep screen on while generating", null, settings.keepScreenOn) { v ->
+      SwitchRow(stringResource(R.string.settings_keep_screen_on), null, settings.keepScreenOn) { v ->
         onChange { it.copy(keepScreenOn = v) }
       }
 
-      Section("Generation defaults")
+      Section(stringResource(R.string.settings_generation_defaults))
       GenerationControls(settings.generation) { g -> onChange { it.copy(generation = g) } }
 
-      Section("Models & memory")
-      SwitchRow("Load last model on launch", "Skipped automatically if the last load crashed", settings.autoLoadLastModel) { v ->
+      Section(stringResource(R.string.settings_models_memory))
+      SwitchRow(stringResource(R.string.settings_autoload), stringResource(R.string.settings_autoload_sub), settings.autoLoadLastModel) { v ->
         onChange { it.copy(autoLoadLastModel = v) }
       }
-      SliderRow("Unload after minutes in background (0 = never)", settings.unloadAfterMinutes.toFloat(), 0f..60f, 11, "%.0f") { v ->
+      SliderRow(stringResource(R.string.settings_unload_after), settings.unloadAfterMinutes.toFloat(), 0f..60f, 11, "%.0f") { v ->
         onChange { it.copy(unloadAfterMinutes = (v / 5).roundToInt() * 5) }
       }
       LoadControls(settings.load) { l -> onChange { it.copy(load = l) } }
@@ -174,12 +184,12 @@ fun SettingsScreen(
         }
       }
 
-      Section("Downloads")
+      Section(stringResource(R.string.settings_downloads))
       LocalTextField(
         initial = settings.hfToken,
         onValueChange = { v -> onChange { it.copy(hfToken = v.trim()) } },
-        label = { Text("Hugging Face token (optional)") },
-        supportingText = { Text("Needed for gated models. Stored encrypted on this device; only sent to huggingface.co.") },
+        label = { Text(stringResource(R.string.settings_hf_token)) },
+        supportingText = { Text(stringResource(R.string.settings_hf_token_sub)) },
         singleLine = true,
         visualTransformation = PasswordVisualTransformation(),
         modifier = Modifier.fillMaxWidth(),
@@ -195,13 +205,13 @@ fun SettingsScreen(
 @Composable
 fun GenerationControls(g: GenerationSettings, onChange: (GenerationSettings) -> Unit) {
   val d = GenerationSettings.DEFAULTS
-  SliderRow("Temperature", g.temperature ?: d.temperature!!, 0f..2f, 40, "%.2f") { onChange(g.copy(temperature = it)) }
-  SliderRow("Top-p", g.topP ?: d.topP!!, 0f..1f, 20, "%.2f") { onChange(g.copy(topP = it)) }
-  SliderRow("Min-p", g.minP ?: d.minP!!, 0f..0.5f, 50, "%.2f") { onChange(g.copy(minP = it)) }
-  SliderRow("Top-k", (g.topK ?: d.topK!!).toFloat(), 0f..100f, 99, "%.0f") { onChange(g.copy(topK = it.roundToInt())) }
-  SliderRow("Repeat penalty", g.repeatPenalty ?: d.repeatPenalty!!, 1f..1.5f, 50, "%.2f") { onChange(g.copy(repeatPenalty = it)) }
+  SliderRow(stringResource(R.string.gen_temperature), g.temperature ?: d.temperature!!, 0f..2f, 40, "%.2f") { onChange(g.copy(temperature = it)) }
+  SliderRow(stringResource(R.string.gen_top_p), g.topP ?: d.topP!!, 0f..1f, 20, "%.2f") { onChange(g.copy(topP = it)) }
+  SliderRow(stringResource(R.string.gen_min_p), g.minP ?: d.minP!!, 0f..0.5f, 50, "%.2f") { onChange(g.copy(minP = it)) }
+  SliderRow(stringResource(R.string.gen_top_k), (g.topK ?: d.topK!!).toFloat(), 0f..100f, 99, "%.0f") { onChange(g.copy(topK = it.roundToInt())) }
+  SliderRow(stringResource(R.string.gen_repeat_penalty), g.repeatPenalty ?: d.repeatPenalty!!, 1f..1.5f, 50, "%.2f") { onChange(g.copy(repeatPenalty = it)) }
   SliderRow(
-    "Max tokens (0 = unlimited)",
+    stringResource(R.string.gen_max_tokens),
     (g.maxTokens ?: d.maxTokens!!).coerceAtLeast(0).toFloat(),
     0f..4096f,
     31,
@@ -214,17 +224,17 @@ fun GenerationControls(g: GenerationSettings, onChange: (GenerationSettings) -> 
 
 @Composable
 private fun LoadControls(l: LoadSettings, onChange: (LoadSettings) -> Unit) {
-  SliderRow("Context size (tokens)", (l.nCtx ?: 4096).toFloat(), 512f..32768f, 62, "%.0f") {
+  SliderRow(stringResource(R.string.load_ctx), (l.nCtx ?: 4096).toFloat(), 512f..32768f, 62, "%.0f") {
     onChange(l.copy(nCtx = (it / 512).roundToInt().coerceAtLeast(1) * 512))
   }
-  SliderRow("CPU threads (0 = auto)", (l.nThreads ?: 0).toFloat(), 0f..8f, 7, "%.0f") {
+  SliderRow(stringResource(R.string.load_threads), (l.nThreads ?: 0).toFloat(), 0f..8f, 7, "%.0f") {
     onChange(l.copy(nThreads = it.roundToInt()))
   }
-  SwitchRow("Memory-map model file", "Faster loads; turn off on low-RAM phones if loads fail", l.useMmap ?: true) {
+  SwitchRow(stringResource(R.string.load_mmap), stringResource(R.string.load_mmap_sub), l.useMmap ?: true) {
     onChange(l.copy(useMmap = it))
   }
   Text(
-    "Load settings apply the next time a model is loaded.",
+    stringResource(R.string.load_apply_note),
     style = MaterialTheme.typography.bodySmall,
     color = MaterialTheme.colorScheme.onSurfaceVariant,
   )
