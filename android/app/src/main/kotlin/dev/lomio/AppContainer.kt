@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.preferencesDataStore
 import dev.lomio.data.AttachmentStore
 import dev.lomio.data.ChatRepository
+import dev.lomio.data.transfer.ChatArchive
 import dev.lomio.data.GgufReader
 import dev.lomio.data.ModelRepository
 import dev.lomio.data.StorageRepository
@@ -59,6 +60,7 @@ class AppContainer(context: Context) {
     )
   val attachments = AttachmentStore(File(appContext.filesDir, "attachments"))
   val chats = ChatRepository(db, attachmentPath = { attachments.file(it).absolutePath })
+  val archive = ChatArchive(db)
 
   val engine: InferenceEngine =
     LlamaEngine(

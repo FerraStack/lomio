@@ -81,6 +81,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.lomio.data.db.MessageRole
 import dev.lomio.domain.UiMessage
+import dev.lomio.ui.ExportFormat
+import dev.lomio.ui.components.ExportFormatDialog
 import kotlinx.coroutines.delay
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
@@ -159,6 +161,7 @@ class ChatActions(
   val onSetGeneration: (GenerationSettings) -> Unit = {},
   val onSaveGenerationAsModelDefault: () -> Unit = {},
   val onOpenModelSettings: () -> Unit = {},
+  val onExport: (ExportFormat) -> Unit = {},
   val onNewChat: () -> Unit = {},
   val onDelete: () -> Unit = {},
   val onDismissCrash: () -> Unit = {},
@@ -229,6 +232,9 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
                 DropdownMenuItem(text = { Text("Model settings") }, onClick = { showMenu = false; actions.onOpenModelSettings() })
               }
               DropdownMenuItem(text = { Text("Rename") }, onClick = { showMenu = false; dialog = "rename" })
+              if (state.conversationId != null) {
+                DropdownMenuItem(text = { Text("Export chat") }, onClick = { showMenu = false; dialog = "export" })
+              }
               DropdownMenuItem(text = { Text("New chat") }, onClick = { showMenu = false; actions.onNewChat() })
               DropdownMenuItem(text = { Text("Delete") }, onClick = { showMenu = false; actions.onDelete() })
             }
@@ -358,6 +364,15 @@ fun ChatScreen(state: ChatUiState, actions: ChatActions, modifier: Modifier = Mo
         onSaveAsModelDefault = {
           actions.onSaveGenerationAsModelDefault()
           dialog = null
+        },
+        onDismiss = { dialog = null },
+      )
+    "export" ->
+      ExportFormatDialog(
+        "Export chat",
+        onPick = {
+          dialog = null
+          actions.onExport(it)
         },
         onDismiss = { dialog = null },
       )

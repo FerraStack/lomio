@@ -18,6 +18,8 @@ stats line. arm64 phones are not tested yet:
   reasoning block for thinking models, Stop, Regenerate, edit-and-resend, and per-chat system
   prompts.
 - History: a drawer with date-grouped chats, full-text search, pin, rename and delete.
+- Export chats as Markdown (readable) or JSON (everything, importable) through the system file
+  picker, per chat or all at once; import JSON exports.
 - Models:
   - Hugging Face search and one-tap starter models.
   - Downloads pinned to a commit, resumable with `If-Range`, checked against the file's sha256,
@@ -52,8 +54,7 @@ stats line. arm64 phones are not tested yet:
   [docs/GPU.md](docs/GPU.md); untested on real phones so far.
 - A local benchmark (pp/tg tokens per second, and where the model runs).
 
-Not done yet: chat export/import,
-split GGUF files, a vision projector for imported (local) models, a tablet layout. Screenshots of every screen are
+Not done yet: split GGUF files, a vision projector for imported (local) models, a tablet layout. Screenshots of every screen are
 posted by CI on each pull request; README screenshots are a TODO.
 
 ## Architecture

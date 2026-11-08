@@ -621,6 +621,42 @@ class ScreenshotTest {
 
   @Test fun settingsTokenDark() = shootToken(true, TokenCheckState.Done(TokenCheck.Rejected(401)))
 
+  private fun shootDataSection(dark: Boolean) {
+    compose.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) {
+        LomioTheme(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColor = false) {
+          SettingsScreen(AppSettings(), {}, {})
+        }
+      }
+    }
+    compose.onNodeWithText("Export chats").performScrollTo()
+    compose.waitForIdle()
+    compose.onRoot().captureRoboImage("build/outputs/roborazzi/settings_data_${if (dark) "dark" else "light"}.png")
+  }
+
+  @Test fun settingsDataLight() = shootDataSection(dark = false)
+
+  @Test fun settingsDataDark() = shootDataSection(dark = true)
+
+  @OptIn(ExperimentalRoborazziApi::class)
+  private fun shootExportDialog(dark: Boolean) {
+    compose.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) {
+        LomioTheme(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColor = false) {
+          ChatScreen(chat.copy(isGenerating = false), ChatActions())
+        }
+      }
+    }
+    compose.onNodeWithContentDescription("More").performClick()
+    compose.onNodeWithText("Export chat").performClick()
+    compose.waitForIdle()
+    captureScreenRoboImage("build/outputs/roborazzi/chat_export_${if (dark) "dark" else "light"}.png")
+  }
+
+  @Test fun chatExportLight() = shootExportDialog(dark = false)
+
+  @Test fun chatExportDark() = shootExportDialog(dark = true)
+
   private val loadFailed =
     ChatUiState(
       modelName = null,
