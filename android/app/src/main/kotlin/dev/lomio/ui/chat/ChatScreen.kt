@@ -78,11 +78,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.lomio.data.db.MessageRole
+import dev.lomio.domain.ContextUsage
 import dev.lomio.domain.UiMessage
 import dev.lomio.ui.ExportFormat
 import dev.lomio.ui.components.ExportFormatDialog
@@ -115,6 +118,8 @@ data class ChatUiState(
   val conversationId: String? = null,
   val title: String = "New chat",
   val messages: List<UiMessage> = emptyList(),
+  /** Context fill after the latest reply; the top bar shows it once the chat nears the limit. */
+  val contextUsage: ContextUsage? = null,
   val isGenerating: Boolean = false,
   val modelName: String? = null,
   val modelStatus: ModelStatus = ModelStatus.NONE,
@@ -152,6 +157,7 @@ class ChatActions(
   val onManageModels: () -> Unit = {},
   /** Regenerate the given assistant reply (adds a version). */
   val onRegenerate: (messageId: String) -> Unit = {},
+  val onSummarize: () -> Unit = {},
   val onCopy: (String) -> Unit = {},
   val onShare: (String) -> Unit = {},
   val onDeleteMessage: (messageId: String) -> Unit = {},
@@ -232,10 +238,18 @@ fun ChatScreen(
           }
         },
         actions = {
+          state.contextUsage?.takeIf { it.nearlyFull }?.let { usage -> ContextMeter(usage) { dialog = "context" } }
           Box {
             IconButton(onClick = { showMenu = true }) { Icon(Icons.Outlined.MoreVert, "More") }
             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
               DropdownMenuItem(text = { Text("Generation settings (this chat)") }, onClick = { showMenu = false; dialog = "gen" })
+              val canSummarize =
+                !state.isGenerating && state.modelStatus == ModelStatus.LOADED && state.messages.any { it.role == MessageRole.ASSISTANT }
+              DropdownMenuItem(
+                text = { Text("Summarize & continue") },
+                enabled = canSummarize,
+                onClick = { showMenu = false; dialog = "context" },
+              )
               DropdownMenuItem(text = { Text("System prompt (this chat)") }, onClick = { showMenu = false; dialog = "system" })
               if (state.modelStatus == ModelStatus.LOADED) {
                 DropdownMenuItem(text = { Text("Model settings") }, onClick = { showMenu = false; actions.onOpenModelSettings() })
@@ -386,6 +400,15 @@ fun ChatScreen(
         },
         onDismiss = { dialog = null },
       )
+    "context" ->
+      SummarizeDialog(
+        usage = state.contextUsage,
+        onConfirm = {
+          dialog = null
+          actions.onSummarize()
+        },
+        onDismiss = { dialog = null },
+      )
     "rename" ->
       TextInputDialog("Rename chat", state.title, singleLine = true, onDismiss = { dialog = null }) {
         actions.onRename(it)
@@ -456,6 +479,7 @@ private fun MessageList(
         val itemModifier = Modifier.background(flash, RoundedCornerShape(12.dp))
         when (m.role) {
           MessageRole.USER -> UserMessage(m, messageActions, itemModifier)
+          MessageRole.SYSTEM -> SummaryNote(m, itemModifier)
           else -> AssistantMessage(m, showStats = showStats, actions = messageActions, modifier = itemModifier)
         }
       }
@@ -762,5 +786,54 @@ fun TextInputDialog(
     },
     confirmButton = { TextButton(onClick = { onConfirm(value) }) { Text("Save") } },
     dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+  )
+}
+
+/** Small ring + percentage in the top bar once the chat nears the context limit. */
+@Composable
+private fun ContextMeter(usage: ContextUsage, onClick: () -> Unit) {
+  val color =
+    when {
+      usage.fraction >= 0.9f -> MaterialTheme.colorScheme.error
+      usage.fraction >= 0.75f -> MaterialTheme.colorScheme.tertiary
+      else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+  Row(
+    verticalAlignment = Alignment.CenterVertically,
+    modifier =
+      Modifier.clip(RoundedCornerShape(50))
+        .clickable(onClick = onClick)
+        .padding(horizontal = 8.dp, vertical = 6.dp)
+        .semantics(mergeDescendants = true) { contentDescription = "Context ${usage.percent}% full" },
+  ) {
+    CircularProgressIndicator(
+      progress = { usage.fraction },
+      color = color,
+      trackColor = MaterialTheme.colorScheme.surfaceVariant,
+      strokeWidth = 2.5.dp,
+      modifier = Modifier.size(16.dp),
+    )
+    Spacer(Modifier.size(6.dp))
+    Text("${usage.percent}%", style = MaterialTheme.typography.labelMedium, color = color)
+  }
+}
+
+@Composable
+private fun SummarizeDialog(usage: ContextUsage?, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text(usage?.let { "Context ${it.percent}% full" } ?: "Summarize & continue") },
+    text = {
+      Text(
+        (usage?.let {
+          "This chat uses ${String.format(java.util.Locale.US, "%,d", it.usedTokens)} of " +
+            "${String.format(java.util.Locale.US, "%,d", it.nCtx)} tokens. When it's full, the oldest messages are left out.\n\n"
+        } ?: "") +
+          "The model can summarize the conversation so far into a short note and continue from there. " +
+          "Earlier messages stay in the chat, but the model will only see the note."
+      )
+    },
+    confirmButton = { TextButton(onClick = onConfirm) { Text("Summarize & continue") } },
+    dismissButton = { TextButton(onClick = onDismiss) { Text("Not now") } },
   )
 }

@@ -261,6 +261,7 @@ fun LomioRoot(
               onShare = { share(context, it) },
               onDeleteMessage = chatVm::deleteMessage,
               onStepVersion = chatVm::stepVersion,
+              onSummarize = chatVm::summarize,
               onCopy = { copy(context, it) },
               onEdit = chatVm::edit,
               onToggleThinking = chatVm::toggleThinking,

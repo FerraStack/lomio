@@ -36,8 +36,13 @@ data class GenerationState(
 }
 
 sealed interface GenEvent {
-  data class Started(val conversationId: String, val assistantId: String, val createdAt: Long) :
-    GenEvent
+  /** [role]: ASSISTANT for a reply, SYSTEM for a summary note being written. */
+  data class Started(
+    val conversationId: String,
+    val assistantId: String,
+    val createdAt: Long,
+    val role: MessageRole = MessageRole.ASSISTANT,
+  ) : GenEvent
 
   data class Update(val assistantId: String, val content: String, val reasoning: String) : GenEvent
 
@@ -78,7 +83,7 @@ object ChatReducer {
           streaming =
             UiMessage(
               id = event.assistantId,
-              role = MessageRole.ASSISTANT,
+              role = event.role,
               content = "",
               status = MessageStatus.STREAMING,
               createdAt = event.createdAt,
