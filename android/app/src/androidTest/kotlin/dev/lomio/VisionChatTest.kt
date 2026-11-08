@@ -126,6 +126,8 @@ class VisionChatTest {
       }
     }
 
+    // Earlier test classes run in the same process: close any leftover system dialog first.
+    shell("am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS")
     compose.onNodeWithContentDescription("Choose model").performClick()
     compose.waitUntil(10_000) { compose.onAllNodesWithText(MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty() }
     compose.onAllNodesWithText(MODEL_NAME, substring = true).onFirst().performClick()
@@ -140,6 +142,7 @@ class VisionChatTest {
     val sheetOpen = { compose.onAllNodesWithText("Choose a model").fetchSemanticsNodes().isNotEmpty() }
     runCatching { compose.waitUntil(60_000) { !sheetOpen() } }
     if (sheetOpen()) {
+      shell("am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS")
       shell("input keyevent KEYCODE_BACK")
       compose.waitUntil(30_000) { !sheetOpen() }
     }
