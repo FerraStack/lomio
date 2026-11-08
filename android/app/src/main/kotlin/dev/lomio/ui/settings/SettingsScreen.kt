@@ -21,6 +21,8 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -221,6 +223,14 @@ fun SliderRow(
       Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
       Text(String.format(Locale.US, format, value), style = MaterialTheme.typography.bodyMedium)
     }
-    Slider(value = value.coerceIn(range), onValueChange = onChange, valueRange = range, steps = steps)
+    Slider(
+      value = value.coerceIn(range),
+      onValueChange = onChange,
+      valueRange = range,
+      steps = steps,
+      colors =
+        if (steps > 10) SliderDefaults.colors(activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent)
+        else SliderDefaults.colors(),
+    )
   }
 }

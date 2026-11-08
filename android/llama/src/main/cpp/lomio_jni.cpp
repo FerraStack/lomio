@@ -298,8 +298,9 @@ JNI_FN(jbyteArray, nativeSystemInfo)(JNIEnv * env, jobject) {
     return guarded<jbyteArray>(env, nullptr, [&] { return string_to_bytes(env, llama_print_system_info()); });
 }
 
+// jtemplate: optional Jinja chat template overriding the GGUF's (null = use the GGUF's).
 JNI_FN(jlong, nativeLoad)(JNIEnv * env, jobject, jbyteArray jpath, jint n_ctx, jint n_threads, jint n_batch,
-                         jint n_gpu_layers, jboolean use_mmap) {
+                         jint n_gpu_layers, jboolean use_mmap, jbyteArray jtemplate) {
     return guarded<jlong>(env, 0, [&]() -> jlong {
         const std::string path = bytes_to_string(env, jpath);
         auto s = std::make_unique<Session>();
@@ -337,14 +338,47 @@ JNI_FN(jlong, nativeLoad)(JNIEnv * env, jobject, jbyteArray jpath, jint n_ctx, j
             if (wret != 0) throw JniError("warm-up decode failed (" + std::to_string(wret) + ")");
         }
 
-        try {
-            s->tmpls = common_chat_templates_init(s->model, "");
-        } catch (const std::exception & e) {
-            LOGW("chat template from GGUF unusable (%s), falling back to ChatML", e.what());
-            s->tmpls = common_chat_templates_init(s->model, CHATML_TEMPLATE);
+        const std::string override_tmpl = jtemplate != nullptr ? bytes_to_string(env, jtemplate) : std::string();
+        if (!override_tmpl.empty()) {
+            try {
+                auto t = common_chat_templates_init(s->model, override_tmpl);
+                common_chat_format_example(t.get(), /*use_jinja=*/true, {});  // throws if it can't render
+                s->tmpls = std::move(t);
+                LOGI("using the chat template override (%zu bytes)", override_tmpl.size());
+            } catch (const std::exception & e) {
+                LOGW("chat template override unusable (%s), using the GGUF's", e.what());
+            }
+        }
+        if (!s->tmpls) {
+            try {
+                s->tmpls = common_chat_templates_init(s->model, "");
+            } catch (const std::exception & e) {
+                LOGW("chat template from GGUF unusable (%s), falling back to ChatML", e.what());
+                s->tmpls = common_chat_templates_init(s->model, CHATML_TEMPLATE);
+            }
         }
         LOGI("model loaded: n_ctx=%u threads=%d", llama_n_ctx(s->ctx), threads);
         return reinterpret_cast<jlong>(s.release());
+    });
+}
+
+// Formats a conversation with a Jinja template and no model (template previews). Stateless.
+JNI_FN(jbyteArray, nativeFormatChat)(JNIEnv * env, jobject, jbyteArray jtemplate, jbyteArray jbos, jbyteArray jeos,
+                                    jobjectArray jroles, jobjectArray jcontents, jboolean add_generation_prompt) {
+    return guarded<jbyteArray>(env, nullptr, [&]() -> jbyteArray {
+        const std::string tmpl = bytes_to_string(env, jtemplate);
+        if (tmpl.empty()) throw JniError("empty template");
+        auto tmpls = common_chat_templates_init(nullptr, tmpl, bytes_to_string(env, jbos), bytes_to_string(env, jeos));
+        common_chat_templates_inputs inputs;
+        for (jsize i = 0, n = env->GetArrayLength(jroles); i < n; ++i) {
+            common_chat_msg m;
+            m.role = element_string(env, jroles, i);
+            m.content = element_string(env, jcontents, i);
+            inputs.messages.push_back(std::move(m));
+        }
+        inputs.add_generation_prompt = add_generation_prompt == JNI_TRUE;
+        inputs.use_jinja = true;
+        return string_to_bytes(env, common_chat_templates_apply(tmpls.get(), inputs).prompt.str());
     });
 }
 

@@ -72,6 +72,8 @@ data class LoadSettings(
   val nThreads: Int? = null,
   val nBatch: Int? = null,
   val useMmap: Boolean? = null,
+  /** Jinja chat template overriding the GGUF's; only set per model. Null = the GGUF's. */
+  val chatTemplate: String? = null,
 ) {
   fun overlay(other: LoadSettings?): LoadSettings {
     if (other == null) return this
@@ -80,6 +82,7 @@ data class LoadSettings(
       nThreads = other.nThreads ?: nThreads,
       nBatch = other.nBatch ?: nBatch,
       useMmap = other.useMmap ?: useMmap,
+      chatTemplate = other.chatTemplate ?: chatTemplate,
     )
   }
 
@@ -90,15 +93,35 @@ data class LoadSettings(
       nThreads = nThreads ?: d.nThreads,
       nBatch = nBatch ?: d.nBatch,
       useMmap = useMmap ?: d.useMmap,
+      chatTemplate = chatTemplate?.takeIf { it.isNotBlank() },
     )
   }
 }
+
+/** The layer a resolved setting comes from; the most specific layer that sets it wins. */
+enum class SettingSource { APP_DEFAULT, GLOBAL, MODEL, CHAT }
 
 /**
  * Resolves the effective settings for a generation: chat override → model settings → global
  * defaults (RESEARCH.md §8.2). Load settings are per-model only because they need a reload.
  */
 object SettingsResolver {
+  /** Which layer supplies a value, given each layer's own (nullable) value. */
+  fun sourceOf(global: Any?, model: Any? = null, chat: Any? = null): SettingSource =
+    when {
+      chat != null -> SettingSource.CHAT
+      model != null -> SettingSource.MODEL
+      global != null -> SettingSource.GLOBAL
+      else -> SettingSource.APP_DEFAULT
+    }
+
+  /** What a model inherits before its own settings: app defaults overlaid with global ones. */
+  fun modelBase(global: GenerationSettings): GenerationSettings = GenerationSettings.DEFAULTS.overlay(global)
+
+  /** What a chat inherits before its own overrides: global, then the model's settings. */
+  fun chatBase(global: GenerationSettings, model: GenerationSettings?): GenerationSettings =
+    modelBase(global).overlay(model)
+
   fun generation(
     global: GenerationSettings,
     model: GenerationSettings?,

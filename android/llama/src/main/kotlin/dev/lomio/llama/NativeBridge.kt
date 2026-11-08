@@ -46,7 +46,22 @@ internal object NativeBridge {
     nBatch: Int,
     nGpuLayers: Int,
     useMmap: Boolean,
+    chatTemplate: ByteArray?,
   ): Long
+
+  /**
+   * Formats [roles]/[contents] with a Jinja chat template, without a model. Stateless and
+   * thread-safe (unlike the rest of this bridge). Throws [LlamaException] when the template does
+   * not parse or render.
+   */
+  external fun nativeFormatChat(
+    template: ByteArray,
+    bosToken: ByteArray,
+    eosToken: ByteArray,
+    roles: Array<ByteArray>,
+    contents: Array<ByteArray>,
+    addGenerationPrompt: Boolean,
+  ): ByteArray
 
   external fun nativeFree(handle: Long)
 

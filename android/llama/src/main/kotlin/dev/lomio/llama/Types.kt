@@ -9,6 +9,8 @@ data class LoadParams(
   /** CPU-only for now; kept so a GPU backend can be added later. */
   val nGpuLayers: Int = 0,
   val useMmap: Boolean = true,
+  /** Jinja chat template to use instead of the GGUF's own; null = the GGUF's. */
+  val chatTemplate: String? = null,
 )
 
 /** Sampler settings for one generation. Defaults follow PocketPal / llama.cpp conventions. */

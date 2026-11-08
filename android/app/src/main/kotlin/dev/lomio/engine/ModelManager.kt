@@ -73,6 +73,10 @@ class ModelManager(
   private val _crashedModelId = MutableStateFlow<String?>(null)
   private val _pending = MutableStateFlow<PendingLoad?>(null)
   private var activeLoad: LoadSettings? = null
+
+  /** Load settings the active model was loaded with; null when nothing is loaded. */
+  val activeLoadSettings: LoadSettings?
+    get() = activeLoad
   private var autoLoadDone = false
 
   val engineState: StateFlow<EngineState> = engine.state

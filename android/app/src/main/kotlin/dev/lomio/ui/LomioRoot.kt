@@ -25,6 +25,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import dev.lomio.AppContainer
 import dev.lomio.BuildConfig
 import dev.lomio.domain.Fit
@@ -41,6 +44,9 @@ import dev.lomio.ui.drawer.DrawerContent
 import dev.lomio.ui.models.HfActions
 import dev.lomio.ui.models.HfSearchScreen
 import dev.lomio.ui.models.ModelsActions
+import dev.lomio.ui.models.ModelSettingsActions
+import dev.lomio.ui.models.ModelSettingsScreen
+import dev.lomio.ui.models.ModelSettingsViewModel
 import dev.lomio.ui.models.ModelsScreen
 import dev.lomio.ui.models.ModelsViewModel
 import dev.lomio.ui.settings.SettingsScreen
@@ -53,12 +59,12 @@ import dev.lomio.ui.storage.StorageViewModel
 import kotlinx.coroutines.launch
 
 /** Screens on the back stack. The chat screen shows whichever conversation ChatViewModel has open. */
-enum class Screen { CHAT, SEARCH, MODELS, HF_SEARCH, SETTINGS, BENCHMARK, ABOUT, STORAGE }
+enum class Screen { CHAT, SEARCH, MODELS, HF_SEARCH, MODEL_SETTINGS, SETTINGS, BENCHMARK, ABOUT, STORAGE }
 
 private fun Screen.destination() =
   when (this) {
     Screen.CHAT, Screen.SEARCH -> Destination.CHAT
-    Screen.MODELS, Screen.HF_SEARCH -> Destination.MODELS
+    Screen.MODELS, Screen.HF_SEARCH, Screen.MODEL_SETTINGS -> Destination.MODELS
     Screen.SETTINGS -> Destination.SETTINGS
     Screen.BENCHMARK -> Destination.BENCHMARK
     Screen.ABOUT -> Destination.ABOUT
@@ -74,6 +80,7 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
   val searchVm: SearchViewModel = viewModel { SearchViewModel(container) }
 
   val backStack = remember { mutableStateListOf(Screen.CHAT) }
+  var settingsModelId by rememberSaveable { mutableStateOf<String?>(null) }
   val screen = backStack.last()
   val drawer = rememberDrawerState(DrawerValue.Closed)
   val scope = rememberCoroutineScope()
@@ -89,6 +96,10 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
     }
   }
   fun openDrawer() = scope.launch { drawer.open() }
+  fun openModelSettings(id: String) {
+    settingsModelId = id
+    navigate(Screen.MODEL_SETTINGS)
+  }
 
   BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
   BackHandler(enabled = !drawer.isOpen && backStack.size > 1) {
@@ -193,6 +204,9 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
               onToggleThinking = chatVm::toggleThinking,
               onRename = { chatVm.rename(it) },
               onSetSystemPrompt = { chatVm.setSystemPrompt(it) },
+              onSetGeneration = { chatVm.setGenerationOverride(it) },
+              onSaveGenerationAsModelDefault = chatVm::saveGenerationAsModelDefault,
+              onOpenModelSettings = { container.modelManager.activeModelId.value?.let(::openModelSettings) },
               onNewChat = { chatVm.open(null) },
               onDelete = { chatVm.delete {} },
               onDismissCrash = chatVm::dismissCrash,
@@ -244,6 +258,7 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
               onDelete = { modelsVm.delete(it) },
               onPause = { modelsVm.pause(it) },
               onResume = { modelsVm.resume(it) },
+              onSettings = ::openModelSettings,
               onMessageShown = modelsVm::messageShown,
               onStorage = { navigate(Screen.STORAGE) },
             ),
@@ -268,6 +283,27 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
             ),
         )
       }
+      Screen.MODEL_SETTINGS ->
+        settingsModelId?.let { id ->
+          val vm: ModelSettingsViewModel = viewModel(key = "model-settings-$id") { ModelSettingsViewModel(container, id) }
+          val state by vm.state.collectAsStateWithLifecycle()
+          ModelSettingsScreen(
+            state = state,
+            actions =
+              ModelSettingsActions(
+                onBack = { backStack.removeAt(backStack.lastIndex) },
+                onRename = vm::rename,
+                onSystemPrompt = { vm.setSystemPrompt(it) },
+                onGen = { vm.setGeneration(it) },
+                onLoad = { vm.setLoad(it) },
+                onTemplateMode = vm::setTemplateMode,
+                onPreset = vm::setPreset,
+                onCustomTemplate = vm::setCustomTemplate,
+                onReload = { vm.reload() },
+                onReset = { vm.reset() },
+              ),
+          )
+        }
       Screen.SETTINGS ->
         settings?.let { s ->
           SettingsScreen(settings = s, onChange = { settingsVm.update(it) }, onOpenDrawer = { openDrawer() })
