@@ -195,7 +195,7 @@ class ModelManager(
     if (!crashedOnGpu) return
     crashedOnGpu = false
     settings.update { it.copy(gpuEnabled = false) }
-    _gpuNotice.value = "The app closed while loading a model on the GPU, so GPU acceleration was turned off."
+    _gpuNotice.value = messages.gpuCrashNotice
   }
 
   fun dismissGpuNotice() {

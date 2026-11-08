@@ -92,6 +92,7 @@ class AppContainer(context: Context) {
       modelNotFound = text.getString(R.string.err_model_not_found),
       notDownloaded = { name -> text.getString(R.string.err_not_downloaded, name) },
       loadFailed = text.getString(R.string.err_load_failed),
+      gpuCrashNotice = text.getString(R.string.gpu_crash_notice),
     )
   val modelManager = ModelManager(engine, models, settings, crashGuard, memory, engineText)
   val chatService = ChatService(engine, modelManager, chats, models, settings, scope, engineText)

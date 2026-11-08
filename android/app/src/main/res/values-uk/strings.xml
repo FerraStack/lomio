@@ -396,6 +396,7 @@
     <string name="api_key_local_on">Застосункам на цьому телефоні потрібен ключ нижче</string>
     <string name="api_key_local_off">Вимкнено: будь-який застосунок на цьому телефоні може користуватися сервером без ключа</string>
     <string name="api_no_key_note">Ключ не потрібен: сервером може користуватися будь-який застосунок на цьому телефоні.</string>
+    <string name="gpu_crash_notice">Застосунок закрився під час завантаження моделі на GPU, тому прискорення на GPU вимкнено.</string>
     <plurals name="search_messages_count">
         <item quantity="one">%1$d повідомлення</item>
         <item quantity="few">%1$d повідомлення</item>

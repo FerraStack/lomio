@@ -12,4 +12,5 @@ data class EngineText(
   /** Takes the model's name. */
   val notDownloaded: (String) -> String = { "$it is not downloaded" },
   val loadFailed: String = "Failed to load model",
+  val gpuCrashNotice: String = "The app closed while loading a model on the GPU, so GPU acceleration was turned off.",
 )
