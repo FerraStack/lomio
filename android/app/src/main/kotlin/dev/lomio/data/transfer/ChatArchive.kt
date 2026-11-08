@@ -67,6 +67,12 @@ class ArchiveException(message: String) : Exception(message)
 
 /** Export and import of chats (RESEARCH.md §9.3 "Data"). */
 class ChatArchive(private val db: LomioDatabase, private val clock: () -> Long = System::currentTimeMillis) {
+  companion object {
+    /** User-facing errors; the UI shows them translated (see TransferViewModel). */
+    const val NOT_LOMIO = "This isn't a Lomio chat export."
+    const val NEWER_VERSION = "This export is from a newer Lomio; update the app first."
+  }
+
   private val json = Json {
     prettyPrint = true
     ignoreUnknownKeys = true
@@ -137,9 +143,9 @@ class ChatArchive(private val db: LomioDatabase, private val clock: () -> Long =
   suspend fun importJson(text: String): ImportResult {
     val file =
       runCatching { json.decodeFromString(ArchiveFile.serializer(), text) }
-        .getOrElse { throw ArchiveException("This isn't a Lomio chat export.") }
-    if (file.format != ArchiveFile.FORMAT) throw ArchiveException("This isn't a Lomio chat export.")
-    if (file.version > 1) throw ArchiveException("This export is from a newer Lomio; update the app first.")
+        .getOrElse { throw ArchiveException(NOT_LOMIO) }
+    if (file.format != ArchiveFile.FORMAT) throw ArchiveException(NOT_LOMIO)
+    if (file.version > 1) throw ArchiveException(NEWER_VERSION)
     var imported = 0
     var skipped = 0
     db.withTransaction {

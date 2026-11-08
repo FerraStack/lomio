@@ -397,7 +397,7 @@ fun ChatScreen(
       )
     "export" ->
       ExportFormatDialog(
-        "Export chat",
+        stringResource(R.string.chat_menu_export),
         onPick = {
           dialog = null
           actions.onExport(it)
@@ -567,7 +567,7 @@ private fun Composer(
             enabled = !isGenerating && attachments.size < MAX_PICK,
             modifier = Modifier.size(52.dp),
           ) {
-            Icon(Icons.Outlined.AddPhotoAlternate, "Attach image")
+            Icon(Icons.Outlined.AddPhotoAlternate, stringResource(R.string.chat_attach_image))
           }
           Spacer(Modifier.size(4.dp))
         }
@@ -697,7 +697,7 @@ private fun AttachmentChip(path: String, number: Int, onRemove: () -> Unit) {
   Box(Modifier.size(64.dp)) {
     AttachmentImage(
       path,
-      contentDescription = "Attached image $number",
+      contentDescription = stringResource(R.string.message_attached_image, number),
       modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
       crop = true,
     )
@@ -707,7 +707,7 @@ private fun AttachmentChip(path: String, number: Int, onRemove: () -> Unit) {
       contentColor = MaterialTheme.colorScheme.inverseOnSurface,
       modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(24.dp).clip(CircleShape).clickable(onClick = onRemove),
     ) {
-      Icon(Icons.Outlined.Close, "Remove image $number", Modifier.padding(4.dp))
+      Icon(Icons.Outlined.Close, stringResource(R.string.chat_remove_image, number), Modifier.padding(4.dp))
     }
   }
 }

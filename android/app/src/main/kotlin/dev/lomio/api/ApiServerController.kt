@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import dev.lomio.R
 
 sealed interface ApiServerStatus {
   data object Stopped : ApiServerStatus
@@ -95,8 +96,8 @@ class ApiServerController(
         runningConfig = null
         _status.value =
           ApiServerStatus.Failed(
-            if (e is BindException) "Port ${prefs.port} is already in use. Pick another port."
-            else "Couldn't start: ${e.message ?: e.javaClass.simpleName}"
+            if (e is BindException) context.getString(R.string.api_port_in_use, prefs.port)
+            else context.getString(R.string.api_couldnt_start, e.message ?: e.javaClass.simpleName)
           )
         false
       }

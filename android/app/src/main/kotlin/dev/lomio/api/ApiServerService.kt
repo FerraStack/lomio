@@ -48,7 +48,7 @@ class ApiServerService : Service() {
       stopSelf()
       return START_NOT_STICKY
     }
-    startInForeground(notification("Starting…"))
+    startInForeground(notification(getString(R.string.api_status_starting)))
     scope.launch { if (!container.apiServer.startServer()) stopSelf() }
     if (watcher == null) watcher = scope.launch { keepNotificationCurrent() }
     return START_NOT_STICKY
@@ -72,11 +72,11 @@ class ApiServerService : Service() {
         when (status) {
           is ApiServerStatus.Running -> {
             val host = if (status.lan) ApiServerController.lanAddress() ?: "0.0.0.0" else "127.0.0.1"
-            val what = if (stats.active > 0) "Answering a request" else model ?: "No model loaded"
+            val what = if (stats.active > 0) getString(R.string.api_notif_answering) else model ?: getString(R.string.chat_no_model)
             "http://$host:${status.port}/v1 · $what"
           }
           is ApiServerStatus.Failed -> status.message
-          else -> "Starting…"
+          else -> getString(R.string.api_status_starting)
         }
       }
       .collect { text -> getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text)) }
@@ -93,7 +93,7 @@ class ApiServerService : Service() {
   private fun notification(text: String): Notification {
     val nm = getSystemService(NotificationManager::class.java)
     if (nm.getNotificationChannel(CHANNEL) == null) {
-      nm.createNotificationChannel(NotificationChannel(CHANNEL, "Local API server", NotificationManager.IMPORTANCE_LOW))
+      nm.createNotificationChannel(NotificationChannel(CHANNEL, getString(R.string.api_notif_channel), NotificationManager.IMPORTANCE_LOW))
     }
     val open =
       PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -106,13 +106,13 @@ class ApiServerService : Service() {
       )
     return NotificationCompat.Builder(this, CHANNEL)
       .setSmallIcon(R.drawable.ic_stat_api)
-      .setContentTitle("Local API server is on")
+      .setContentTitle(getString(R.string.api_notif_title))
       .setContentText(text)
       .setOngoing(true)
       .setOnlyAlertOnce(true)
       .setSilent(true)
       .setContentIntent(open)
-      .addAction(0, "Stop", stop)
+      .addAction(0, getString(R.string.api_notif_stop), stop)
       .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
       .build()
   }

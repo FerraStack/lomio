@@ -66,6 +66,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.lomio.api.ApiServerStatus
 import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.ui.res.stringResource
+import dev.lomio.R
 
 data class ApiServerUiState(
   val enabled: Boolean = false,
@@ -96,14 +98,14 @@ class ApiServerActions(
 fun ApiServerSection(state: ApiServerUiState, actions: ApiServerActions) {
   HorizontalDivider(Modifier.padding(top = 16.dp, bottom = 8.dp))
   Text(
-    "Local API server",
+    stringResource(R.string.api_title),
     style = MaterialTheme.typography.titleSmall,
     color = MaterialTheme.colorScheme.primary,
     modifier = Modifier.semantics { heading() },
   )
   ToggleRow(
-    "OpenAI-compatible server",
-    "Other apps can chat with the loaded model through an OpenAI-style API",
+    stringResource(R.string.api_switch),
+    stringResource(R.string.api_switch_sub),
     state.enabled,
     actions.onEnabled,
   )
@@ -112,25 +114,22 @@ fun ApiServerSection(state: ApiServerUiState, actions: ApiServerActions) {
       StatusCard(state)
       PortField(state.port, actions.onPort)
       ToggleRow(
-        "Allow devices on your Wi-Fi",
-        if (state.lan) "Other devices on your network can connect with the API key below"
-        else "Off: only apps on this phone can connect",
+        stringResource(R.string.api_lan),
+        stringResource(if (state.lan) R.string.api_lan_on else R.string.api_lan_off),
         state.lan,
         actions.onLan,
       )
       if (!state.lan) {
         ToggleRow(
-          "Require the API key on this phone too",
-          if (state.requireKeyLocal) "Apps on this phone need the key below"
-          else "Off: any app on this phone can use the server without a key",
+          stringResource(R.string.api_key_local),
+          stringResource(if (state.requireKeyLocal) R.string.api_key_local_on else R.string.api_key_local_off),
           state.requireKeyLocal,
           actions.onRequireKeyLocal,
         )
       }
       if (state.lan || state.requireKeyLocal) KeyField(state.apiKey, actions.onNewKey)
       Text(
-        "Works with OpenAI SDKs and apps that let you set a base URL. Lomio keeps the model loaded " +
-          "while the server runs and shows a notification with a Stop button.",
+        stringResource(R.string.api_help),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
@@ -176,17 +175,17 @@ private fun StatusCard(state: ApiServerUiState) {
       }
       when (val s = state.status) {
         is ApiServerStatus.Running -> {
-          AddressRow("http://127.0.0.1:${s.port}/v1", "On this phone") { copy(context, it, sensitive = false) }
+          AddressRow("http://127.0.0.1:${s.port}/v1", stringResource(R.string.api_on_phone)) { copy(context, it, sensitive = false) }
           if (s.lan) {
             val lan = state.lanAddress
-            if (lan != null) AddressRow("http://$lan:${s.port}/v1", "On your Wi-Fi") { copy(context, it, sensitive = false) }
-            else Note(Icons.Outlined.WarningAmber, "Not connected to a local network", MaterialTheme.colorScheme.tertiary)
+            if (lan != null) AddressRow("http://$lan:${s.port}/v1", stringResource(R.string.api_on_wifi)) { copy(context, it, sensitive = false) }
+            else Note(Icons.Outlined.WarningAmber, stringResource(R.string.api_no_lan), MaterialTheme.colorScheme.tertiary)
           }
           if (!s.lan && !state.requireKeyLocal) {
-            Note(Icons.Outlined.LockOpen, "No key needed: any app on this phone can use the server.", MaterialTheme.colorScheme.onSurfaceVariant)
+            Note(Icons.Outlined.LockOpen, stringResource(R.string.api_no_key_note), MaterialTheme.colorScheme.onSurfaceVariant)
           }
-          if (state.modelName != null) Note(Icons.Outlined.Memory, "Answers with ${state.modelName}", MaterialTheme.colorScheme.onSurfaceVariant)
-          else Note(Icons.Outlined.WarningAmber, "No model loaded. Requests fail until you load one in Models.", MaterialTheme.colorScheme.tertiary)
+          if (state.modelName != null) Note(Icons.Outlined.Memory, stringResource(R.string.api_answers_with, state.modelName), MaterialTheme.colorScheme.onSurfaceVariant)
+          else Note(Icons.Outlined.WarningAmber, stringResource(R.string.api_no_model), MaterialTheme.colorScheme.tertiary)
         }
         is ApiServerStatus.Failed -> Note(Icons.Outlined.ErrorOutline, s.message, MaterialTheme.colorScheme.error)
         else -> Unit
@@ -200,18 +199,19 @@ private fun StatusChip(status: ApiServerStatus, answering: Boolean) {
   val cs = MaterialTheme.colorScheme
   val (label, container, content, dot) =
     when (status) {
-      is ApiServerStatus.Running -> Quad(if (answering) "Answering" else "Running", cs.primaryContainer, cs.onPrimaryContainer, cs.primary)
-      ApiServerStatus.Starting -> Quad("Starting…", cs.secondaryContainer, cs.onSecondaryContainer, cs.secondary)
-      is ApiServerStatus.Failed -> Quad("Couldn't start", cs.errorContainer, cs.onErrorContainer, cs.error)
-      ApiServerStatus.Stopped -> Quad("Stopped", cs.surfaceContainerHighest, cs.onSurfaceVariant, cs.outline)
+      is ApiServerStatus.Running -> Quad(stringResource(if (answering) R.string.api_status_answering else R.string.api_status_running), cs.primaryContainer, cs.onPrimaryContainer, cs.primary)
+      ApiServerStatus.Starting -> Quad(stringResource(R.string.api_status_starting), cs.secondaryContainer, cs.onSecondaryContainer, cs.secondary)
+      is ApiServerStatus.Failed -> Quad(stringResource(R.string.api_status_failed), cs.errorContainer, cs.onErrorContainer, cs.error)
+      ApiServerStatus.Stopped -> Quad(stringResource(R.string.api_status_stopped), cs.surfaceContainerHighest, cs.onSurfaceVariant, cs.outline)
     }
+  val description = stringResource(R.string.api_status_a11y, label)
   Row(
     verticalAlignment = Alignment.CenterVertically,
     modifier =
       Modifier.background(container, RoundedCornerShape(50))
         .padding(horizontal = 12.dp, vertical = 6.dp)
         .semantics(mergeDescendants = true) {
-          contentDescription = "API server: $label"
+          contentDescription = description
           liveRegion = LiveRegionMode.Polite
         },
   ) {
@@ -229,7 +229,7 @@ private fun AddressRow(url: String, label: String, onCopy: (String) -> Unit) {
       Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
       Text(url, style = MaterialTheme.typography.bodyLarge, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
-    IconButton(onClick = { onCopy(url) }) { Icon(Icons.Outlined.ContentCopy, "Copy address $url") }
+    IconButton(onClick = { onCopy(url) }) { Icon(Icons.Outlined.ContentCopy, stringResource(R.string.api_copy_address, url)) }
   }
 }
 
@@ -253,9 +253,9 @@ private fun PortField(port: Int, onPort: (Int) -> Unit) {
   OutlinedTextField(
     value = text,
     onValueChange = { t -> text = t.filter(Char::isDigit).take(5) },
-    label = { Text("Port") },
+    label = { Text(stringResource(R.string.api_port)) },
     isError = !valid,
-    supportingText = { Text(if (valid) "Applies when you press Done" else "Use a number from 1024 to 65535") },
+    supportingText = { Text(stringResource(if (valid) R.string.api_port_done else R.string.api_port_invalid)) },
     singleLine = true,
     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
     keyboardActions = KeyboardActions(onDone = { commit() }),
@@ -272,24 +272,24 @@ private fun KeyField(key: String, onNewKey: () -> Unit) {
       value = key,
       onValueChange = {},
       readOnly = true,
-      label = { Text("API key") },
+      label = { Text(stringResource(R.string.api_key)) },
       singleLine = true,
       textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
       visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
       trailingIcon = {
         Row {
           IconButton(onClick = { shown = !shown }) {
-            Icon(if (shown) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, if (shown) "Hide API key" else "Show API key")
+            Icon(if (shown) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, stringResource(if (shown) R.string.api_key_hide else R.string.api_key_show))
           }
           IconButton(onClick = { copy(context, key, sensitive = true) }, enabled = key.isNotEmpty()) {
-            Icon(Icons.Outlined.ContentCopy, "Copy API key")
+            Icon(Icons.Outlined.ContentCopy, stringResource(R.string.api_key_copy))
           }
         }
       },
-      supportingText = { Text("Clients send it as 'Authorization: Bearer <key>'") },
+      supportingText = { Text(stringResource(R.string.api_key_sub)) },
       modifier = Modifier.fillMaxWidth(),
     )
-    TextButton(onClick = onNewKey) { Text("Make a new key") }
+    TextButton(onClick = onNewKey) { Text(stringResource(R.string.api_key_new)) }
   }
 }
 

@@ -32,7 +32,7 @@ fun AboutScreen(versionName: String, onOpenDrawer: () -> Unit, modifier: Modifie
     },
   ) { padding ->
     Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      Text("Lomio $versionName", style = MaterialTheme.typography.headlineSmall)
+      Text(stringResource(R.string.about_version, versionName), style = MaterialTheme.typography.headlineSmall)
       Text(stringResource(R.string.about_tagline))
       Text(stringResource(R.string.about_licenses), style = MaterialTheme.typography.bodyMedium)
       Text(stringResource(R.string.about_source), style = MaterialTheme.typography.bodyMedium)

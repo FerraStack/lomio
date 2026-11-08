@@ -97,7 +97,7 @@ fun SettingsScreen(
 ) {
   var exportDialog by remember { mutableStateOf(false) }
   if (exportDialog) {
-    ExportFormatDialog("Export all chats", onPick = { exportDialog = false; onExportAll(it) }, onDismiss = { exportDialog = false })
+    ExportFormatDialog(stringResource(R.string.export_all_title), onPick = { exportDialog = false; onExportAll(it) }, onDismiss = { exportDialog = false })
   }
   Scaffold(
     modifier = modifier,
@@ -167,7 +167,7 @@ fun SettingsScreen(
 
       Section("Data")
       Text(
-        "Chats stay on this device. Export them to keep a copy or move them to another phone.",
+        stringResource(R.string.settings_data_sub),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
@@ -175,12 +175,12 @@ fun SettingsScreen(
         OutlinedButton(onClick = { exportDialog = true }) {
           Icon(Icons.Outlined.FileDownload, null, Modifier.size(18.dp))
           Spacer(Modifier.size(8.dp))
-          Text("Export chats")
+          Text(stringResource(R.string.settings_export_chats))
         }
         OutlinedButton(onClick = onImport) {
           Icon(Icons.Outlined.FileUpload, null, Modifier.size(18.dp))
           Spacer(Modifier.size(8.dp))
-          Text("Import")
+          Text(stringResource(R.string.settings_import))
         }
       }
 
@@ -241,19 +241,30 @@ private fun LoadControls(l: LoadSettings, onChange: (LoadSettings) -> Unit) {
 }
 
 /** "GPU acceleration (experimental)": off by default, only offered on Adreno + OpenCL phones. */
+/** GpuSupport's reasons are English data from the domain layer; shown in the user's language. */
+@Composable
+private fun gpuReason(reason: String): String =
+  when (reason) {
+    "Not checked" -> stringResource(R.string.gpu_reason_unknown)
+    "The GPU backend is only built for 64-bit ARM phones" -> stringResource(R.string.gpu_reason_abi)
+    "Needs a Snapdragon (Adreno) GPU" -> stringResource(R.string.gpu_reason_qualcomm)
+    "This phone has no OpenCL driver" -> stringResource(R.string.gpu_reason_opencl)
+    else -> reason
+  }
+
 @Composable
 fun GpuControls(settings: AppSettings, gpu: GpuSupport, onChange: ((AppSettings) -> AppSettings) -> Unit) {
   // Turning it off always works, even if the phone no longer qualifies.
   val canToggle = gpu.available || settings.gpuEnabled
+  val gpuTitle = stringResource(R.string.gpu_title)
   Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
     Column(Modifier.weight(1f)) {
-      Text("GPU acceleration (experimental)", style = MaterialTheme.typography.bodyLarge)
+      Text(stringResource(R.string.gpu_title), style = MaterialTheme.typography.bodyLarge)
       Text(
         if (gpu.available) {
-          "Runs layers on the Adreno GPU with OpenCL. Often faster at reading long prompts, not always " +
-            "at writing; if the GPU fails, the model loads on the CPU."
+          stringResource(R.string.gpu_on_sub)
         } else {
-          "Not available: ${gpu.reason}."
+          stringResource(R.string.gpu_unavailable, gpuReason(gpu.reason))
         },
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -263,18 +274,19 @@ fun GpuControls(settings: AppSettings, gpu: GpuSupport, onChange: ((AppSettings)
       checked = settings.gpuEnabled,
       onCheckedChange = { v -> onChange { it.copy(gpuEnabled = v) } },
       enabled = canToggle,
-      modifier = Modifier.semantics { contentDescription = "GPU acceleration (experimental)" },
+      modifier = Modifier.semantics { contentDescription = gpuTitle },
     )
   }
   if (settings.gpuEnabled) {
     // 99 covers every layer of any phone-sized model, so the top of the slider reads "All" (#28).
+    val all = stringResource(R.string.gpu_layers_all)
     SliderRow(
-      "Layers on the GPU",
+      stringResource(R.string.gpu_layers),
       settings.gpuLayers.coerceIn(1, 99).toFloat(),
       1f..99f,
       97,
       "%.0f",
-      valueText = { if (it.roundToInt() >= 99) "All" else it.roundToInt().toString() },
+      valueText = { if (it.roundToInt() >= 99) all else it.roundToInt().toString() },
     ) { v ->
       onChange { it.copy(gpuLayers = v.roundToInt()) }
     }

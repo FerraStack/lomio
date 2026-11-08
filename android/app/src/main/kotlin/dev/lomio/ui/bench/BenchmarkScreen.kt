@@ -75,9 +75,9 @@ fun BenchmarkScreen(
         state.modelName?.let { stringResource(R.string.bench_model, it) } ?: stringResource(R.string.bench_no_model),
         style = MaterialTheme.typography.bodyLarge,
       )
-      state.backend?.let { Text("Runs on: $it", style = MaterialTheme.typography.bodyMedium) }
+      state.backend?.let { Text(stringResource(R.string.bench_runs_on, it), style = MaterialTheme.typography.bodyMedium) }
       state.gpuNote?.let {
-        Text("GPU not used: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        Text(stringResource(R.string.bench_gpu_not_used, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
       }
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         BenchProfile.entries.forEach { p ->

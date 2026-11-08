@@ -260,16 +260,17 @@ fun FitHint(fit: Fit?, modifier: Modifier = Modifier) {
 /** Small "Vision" pill for models that can read images. */
 @Composable
 fun VisionBadge(modifier: Modifier = Modifier) {
+  val visionDescription = stringResource(R.string.vision_badge_a11y)
   Surface(
     color = MaterialTheme.colorScheme.tertiaryContainer,
     contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
     shape = RoundedCornerShape(50),
-    modifier = modifier.semantics(mergeDescendants = true) { contentDescription = "Vision: reads images" },
+    modifier = modifier.semantics(mergeDescendants = true) { contentDescription = visionDescription },
   ) {
     Row(Modifier.padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
       Icon(Icons.Outlined.Image, null, Modifier.size(14.dp))
       Spacer(Modifier.size(4.dp))
-      Text("Vision", style = MaterialTheme.typography.labelSmall)
+      Text(stringResource(R.string.vision_badge), style = MaterialTheme.typography.labelSmall)
     }
   }
 }

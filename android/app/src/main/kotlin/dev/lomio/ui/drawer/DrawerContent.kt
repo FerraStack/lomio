@@ -172,7 +172,7 @@ fun DrawerContent(
   }
   exporting?.let { c ->
     ExportFormatDialog(
-      "Export “${c.title}”",
+      stringResource(R.string.drawer_export_named, chatTitle(c.title)),
       onPick = {
         exporting = null
         actions.onExport(c.id, c.title, it)
