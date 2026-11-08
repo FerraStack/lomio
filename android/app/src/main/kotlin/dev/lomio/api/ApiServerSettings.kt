@@ -17,7 +17,13 @@ data class ApiServerPrefs(
   /** Listen on all interfaces (Wi-Fi) instead of 127.0.0.1; requires [apiKey]. */
   val lan: Boolean = false,
   val apiKey: String = "",
-)
+  /** Ask for [apiKey] on 127.0.0.1 too, so other apps on the phone need it as well. */
+  val requireKeyLocal: Boolean = false,
+) {
+  /** Whether requests must carry [apiKey]: always on the LAN, optionally on this phone. */
+  val keyRequired: Boolean
+    get() = lan || requireKeyLocal
+}
 
 /**
  * Its own DataStore file (`datastore/api_server.preferences_pb`), which the backup and
@@ -31,6 +37,7 @@ class ApiServerSettingsRepository(private val store: DataStore<Preferences>) {
         port = p[PORT] ?: ApiServer.DEFAULT_PORT,
         lan = p[LAN] ?: false,
         apiKey = p[KEY] ?: "",
+        requireKeyLocal = p[KEY_LOCAL] ?: false,
       )
     }
 
@@ -39,12 +46,13 @@ class ApiServerSettingsRepository(private val store: DataStore<Preferences>) {
   suspend fun update(transform: (ApiServerPrefs) -> ApiServerPrefs): ApiServerPrefs {
     var result = ApiServerPrefs()
     store.edit { p ->
-      val cur = ApiServerPrefs(p[ENABLED] ?: false, p[PORT] ?: ApiServer.DEFAULT_PORT, p[LAN] ?: false, p[KEY] ?: "")
+      val cur = ApiServerPrefs(p[ENABLED] ?: false, p[PORT] ?: ApiServer.DEFAULT_PORT, p[LAN] ?: false, p[KEY] ?: "", p[KEY_LOCAL] ?: false)
       val next = transform(cur)
       p[ENABLED] = next.enabled
       p[PORT] = next.port
       p[LAN] = next.lan
       p[KEY] = next.apiKey
+      p[KEY_LOCAL] = next.requireKeyLocal
       result = next
     }
     return result
@@ -55,5 +63,6 @@ class ApiServerSettingsRepository(private val store: DataStore<Preferences>) {
     val PORT = intPreferencesKey("port")
     val LAN = booleanPreferencesKey("lan")
     val KEY = stringPreferencesKey("api_key")
+    val KEY_LOCAL = booleanPreferencesKey("require_key_local")
   }
 }

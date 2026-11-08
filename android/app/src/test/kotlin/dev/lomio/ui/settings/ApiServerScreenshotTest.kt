@@ -78,6 +78,12 @@ class ApiServerScreenshotTest {
 
   @Test fun offLight() = shoot("api_server_off", dark = false, ApiServerUiState())
 
+  private val localKey = running.copy(requireKeyLocal = true, apiKey = "lomio-Qm3xT9vK2pL8wN4rZ7yB1cD6fH0jS5aE")
+
+  @Test fun localKeyLight() = shoot("api_server_local_key", dark = false, localKey)
+
+  @Test fun localKeyDark() = shoot("api_server_local_key", dark = true, localKey)
+
   @Test
   fun theWholeRowTogglesTheServer() {
     var enabled: Boolean? = null

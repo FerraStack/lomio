@@ -370,6 +370,7 @@ fun LomioRoot(container: AppContainer, settingsVm: SettingsViewModel) {
                 onPort = { apiVm.setPort(it) },
                 onLan = { apiVm.setLan(it) },
                 onNewKey = { apiVm.newKey() },
+                onRequireKeyLocal = { apiVm.setRequireKeyLocal(it) },
               ),
           )
         }
