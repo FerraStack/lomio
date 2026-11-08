@@ -22,6 +22,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.launch
+import androidx.core.app.ServiceCompat
 
 /**
  * Keeps the process (and the loaded model) alive while the local API server runs, with an
@@ -54,8 +55,12 @@ class ApiServerService : Service() {
   }
 
   override fun onDestroy() {
-    container.apiServer.stopServer()
+    // Stop updating the notification first: stopServer() changes the status, and a collector
+    // still running would post the notification again after the service has gone.
     scope.cancel()
+    container.apiServer.stopServer()
+    ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+    getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
     super.onDestroy()
   }
 

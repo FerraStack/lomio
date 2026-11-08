@@ -72,7 +72,9 @@ set a base URL.
 
 - **Off by default.** While it runs, a notification shows the address and has a Stop button. A
   foreground service (type `specialUse`) keeps the process and the model in memory.
-- **127.0.0.1 only** unless you turn on *Allow devices on your Wi-Fi*. Then it listens on all
+- **127.0.0.1 only** unless you turn on *Allow devices on your Wi-Fi*. In that default mode any
+  app on the phone can use the server without a key; turn on *Require the API key on this phone
+  too* if you don't want that. Then it listens on all
   interfaces, and every request needs the API key shown in Settings
   (`Authorization: Bearer <key>`). In loopback mode, requests whose `Host` isn't
   `127.0.0.1`/`localhost` are refused (no DNS rebinding from web pages). JSON bodies must be

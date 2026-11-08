@@ -26,6 +26,7 @@ class ApiServerViewModel(private val c: AppContainer) : ViewModel() {
           port = prefs.port,
           lan = prefs.lan,
           apiKey = prefs.apiKey,
+          requireKeyLocal = prefs.requireKeyLocal,
           lanAddress = if (prefs.lan) ApiServerController.lanAddress() else null,
           modelName = model,
           served = stats.served,
@@ -41,6 +42,9 @@ class ApiServerViewModel(private val c: AppContainer) : ViewModel() {
 
   fun setLan(on: Boolean) =
     c.apiServer.change { it.copy(lan = on, apiKey = it.apiKey.ifBlank { if (on) ApiServer.newApiKey() else "" }) }
+
+  fun setRequireKeyLocal(on: Boolean) =
+    c.apiServer.change { it.copy(requireKeyLocal = on, apiKey = it.apiKey.ifBlank { if (on) ApiServer.newApiKey() else "" }) }
 
   fun newKey() = c.apiServer.change { it.copy(apiKey = ApiServer.newApiKey()) }
 }

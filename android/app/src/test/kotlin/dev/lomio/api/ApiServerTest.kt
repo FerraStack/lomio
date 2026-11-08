@@ -172,6 +172,15 @@ class ApiServerTest {
   }
 
   @Test
+  fun aKeyCanBeRequiredOnThisPhoneToo() {
+    start(lan = false, token = "lomio-local")
+    chat(hello).use { assertEquals(401, it.code) }
+    chat(hello) { header("Authorization", "Bearer lomio-local") }.use { assertEquals(200, it.code) }
+    // The Host check still applies on loopback, key or not.
+    chat(hello) { header("Authorization", "Bearer lomio-local"); header("Host", "evil.example") }.use { assertEquals(403, it.code) }
+  }
+
+  @Test
   fun acceptsChunkedRequestBodies() {
     start()
     val chunked =

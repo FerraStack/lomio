@@ -65,6 +65,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.lomio.api.ApiServerStatus
+import androidx.compose.material.icons.outlined.LockOpen
 
 data class ApiServerUiState(
   val enabled: Boolean = false,
@@ -72,6 +73,8 @@ data class ApiServerUiState(
   val port: Int = 8080,
   val lan: Boolean = false,
   val apiKey: String = "",
+  /** Apps on this phone need the key too (otherwise any app here can connect without one). */
+  val requireKeyLocal: Boolean = false,
   /** This phone's address on the local network, when LAN access is on. */
   val lanAddress: String? = null,
   /** The loaded model the server answers with. */
@@ -85,6 +88,7 @@ class ApiServerActions(
   val onPort: (Int) -> Unit = {},
   val onLan: (Boolean) -> Unit = {},
   val onNewKey: () -> Unit = {},
+  val onRequireKeyLocal: (Boolean) -> Unit = {},
 )
 
 /** Settings → Local API server: the switch, a status chip, the address(es) and the LAN key. */
@@ -114,7 +118,16 @@ fun ApiServerSection(state: ApiServerUiState, actions: ApiServerActions) {
         state.lan,
         actions.onLan,
       )
-      if (state.lan) KeyField(state.apiKey, actions.onNewKey)
+      if (!state.lan) {
+        ToggleRow(
+          "Require the API key on this phone too",
+          if (state.requireKeyLocal) "Apps on this phone need the key below"
+          else "Off: any app on this phone can use the server without a key",
+          state.requireKeyLocal,
+          actions.onRequireKeyLocal,
+        )
+      }
+      if (state.lan || state.requireKeyLocal) KeyField(state.apiKey, actions.onNewKey)
       Text(
         "Works with OpenAI SDKs and apps that let you set a base URL. Lomio keeps the model loaded " +
           "while the server runs and shows a notification with a Stop button.",
@@ -168,6 +181,9 @@ private fun StatusCard(state: ApiServerUiState) {
             val lan = state.lanAddress
             if (lan != null) AddressRow("http://$lan:${s.port}/v1", "On your Wi-Fi") { copy(context, it, sensitive = false) }
             else Note(Icons.Outlined.WarningAmber, "Not connected to a local network", MaterialTheme.colorScheme.tertiary)
+          }
+          if (!s.lan && !state.requireKeyLocal) {
+            Note(Icons.Outlined.LockOpen, "No key needed: any app on this phone can use the server.", MaterialTheme.colorScheme.onSurfaceVariant)
           }
           if (state.modelName != null) Note(Icons.Outlined.Memory, "Answers with ${state.modelName}", MaterialTheme.colorScheme.onSurfaceVariant)
           else Note(Icons.Outlined.WarningAmber, "No model loaded. Requests fail until you load one in Models.", MaterialTheme.colorScheme.tertiary)

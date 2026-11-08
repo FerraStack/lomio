@@ -81,8 +81,8 @@ class ApiServerController(
   suspend fun startServer(): Boolean =
     lock.withLock {
       var prefs = settings.current()
-      if (prefs.lan && prefs.apiKey.isBlank()) prefs = settings.update { it.copy(apiKey = ApiServer.newApiKey()) }
-      val config = ApiServerConfig(prefs.port, prefs.lan, prefs.apiKey.takeIf { prefs.lan })
+      if (prefs.keyRequired && prefs.apiKey.isBlank()) prefs = settings.update { it.copy(apiKey = ApiServer.newApiKey()) }
+      val config = ApiServerConfig(prefs.port, prefs.lan, prefs.apiKey.takeIf { prefs.keyRequired })
       if (server.isRunning && config == runningConfig) return@withLock true
       server.stop()
       _status.value = ApiServerStatus.Starting

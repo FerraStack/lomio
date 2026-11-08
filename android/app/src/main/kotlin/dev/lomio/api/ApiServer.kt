@@ -41,8 +41,9 @@ interface ApiBackend {
 }
 
 /**
- * @param lan false = bind 127.0.0.1 only (apps on this phone); true = all interfaces, and every
- *   request must carry `Authorization: Bearer <token>`.
+ * @param lan false = bind 127.0.0.1 only (apps on this phone); true = all interfaces.
+ * @param token when set, every request must carry `Authorization: Bearer <token>`. Always set in
+ *   LAN mode; optional on 127.0.0.1, where any app on the phone can otherwise connect.
  */
 data class ApiServerConfig(val port: Int, val lan: Boolean, val token: String?) {
   init {
@@ -196,11 +197,12 @@ class ApiServer(private val backend: ApiBackend, private val clock: () -> Long =
   }
 
   private fun authorize(req: HttpRequest, config: ApiServerConfig) {
-    if (config.lan) {
+    if (!config.token.isNullOrBlank()) {
       val given = req.header("authorization")?.removePrefix("Bearer ")?.trim().orEmpty()
-      val ok = MessageDigest.isEqual(given.toByteArray(), config.token.orEmpty().toByteArray())
+      val ok = MessageDigest.isEqual(given.toByteArray(), config.token.toByteArray())
       if (!ok) throw ApiError(401, "Missing or wrong API key. Send 'Authorization: Bearer <key>' with the key shown in Lomio's settings.", code = "invalid_api_key")
-    } else {
+    }
+    if (!config.lan) {
       // Loopback only: refuse other Host names so a web page can't reach us by DNS rebinding.
       val host = req.header("host") ?: return
       val name = if (host.startsWith("[")) host.substringBefore(']') + "]" else host.substringBefore(':')
