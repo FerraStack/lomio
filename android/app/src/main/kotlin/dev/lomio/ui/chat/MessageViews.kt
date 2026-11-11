@@ -192,8 +192,9 @@ fun AssistantMessage(
             MenuItem(stringResource(R.string.action_delete), Icons.Outlined.Delete, destructive = true) { more = false; actions.onDelete() }
           }
         }
-        if (showStats) message.stats?.let { StatsLine(it, Modifier.weight(1f, fill = false)) }
       }
+      // On its own line so it never gets cut off by the action buttons (issue #17).
+      if (showStats) message.stats?.let { StatsLine(it, Modifier.padding(start = 8.dp, bottom = 2.dp)) }
     }
   }
 }

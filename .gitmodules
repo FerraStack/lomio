@@ -6,3 +6,7 @@
 	path = android/llama/opencl/OpenCL-Headers
 	url = https://github.com/KhronosGroup/OpenCL-Headers
 	shallow = true
+[submodule "android/llama/kleidiai"]
+	path = android/llama/kleidiai
+	url = https://github.com/ARM-software/kleidiai
+	shallow = true

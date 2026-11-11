@@ -13,7 +13,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.ModalNavigationDrawer
+import dev.lomio.ui.components.AdaptiveDrawerScaffold
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.setValue
@@ -193,7 +193,7 @@ fun LomioRoot(
   val notificationPermission =
     rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
-  ModalNavigationDrawer(
+  AdaptiveDrawerScaffold(
     drawerState = drawer,
     gesturesEnabled = screen != Screen.HF_SEARCH,
     drawerContent = {
