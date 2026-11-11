@@ -89,6 +89,12 @@ import dev.lomio.ui.models.TemplateMode
 import dev.lomio.ui.models.TemplatePreview
 import dev.lomio.data.hf.TokenCheck
 import dev.lomio.ui.settings.TokenCheckState
+import dev.lomio.ui.onboarding.OnboardingActions
+import dev.lomio.ui.onboarding.OnboardingScreen
+import dev.lomio.ui.onboarding.OnboardingStep
+import dev.lomio.ui.onboarding.OnboardingUiState
+import dev.lomio.ui.onboarding.StarterDownload
+import dev.lomio.ui.onboarding.StarterOption
 
 /**
  * Roborazzi screenshots of the main screens with fake state (no native library, no DB).
@@ -656,6 +662,45 @@ class ScreenshotTest {
   @Test fun chatExportLight() = shootExportDialog(dark = false)
 
   @Test fun chatExportDark() = shootExportDialog(dark = true)
+
+  private val onboarding =
+    OnboardingUiState(
+      ramGb = 8,
+      options = RECOMMENDED.mapIndexed { i, r -> StarterOption(r, if (i < 3) Fit.FITS else Fit.TIGHT) },
+      selected = 2,
+    )
+
+  @Test fun onboardingWelcomeLight() = shoot("onboarding_1_welcome", dark = false) { OnboardingScreen(onboarding, OnboardingActions()) }
+
+  @Test fun onboardingWelcomeDark() = shoot("onboarding_1_welcome", dark = true) { OnboardingScreen(onboarding, OnboardingActions()) }
+
+  @Test
+  fun onboardingPickLight() =
+    shoot("onboarding_2_pick", dark = false) { OnboardingScreen(onboarding.copy(step = OnboardingStep.PICK), OnboardingActions()) }
+
+  @Test
+  fun onboardingPickDark() =
+    shoot("onboarding_2_pick", dark = true) { OnboardingScreen(onboarding.copy(step = OnboardingStep.PICK), OnboardingActions()) }
+
+  private val downloading =
+    onboarding.copy(step = OnboardingStep.DOWNLOAD, download = StarterDownload.Running(1_150_000_000, 1_921_909_280))
+
+  @Test fun onboardingDownloadLight() = shoot("onboarding_3_download", dark = false) { OnboardingScreen(downloading, OnboardingActions()) }
+
+  @Test fun onboardingDownloadDark() = shoot("onboarding_3_download", dark = true) { OnboardingScreen(downloading, OnboardingActions()) }
+
+  @Test
+  fun onboardingReadyLight() =
+    shoot("onboarding_4_ready", dark = false) { OnboardingScreen(downloading.copy(download = StarterDownload.Ready), OnboardingActions()) }
+
+  @Test
+  fun onboardingFailedLight() =
+    shoot("onboarding_5_failed", dark = false) {
+      OnboardingScreen(
+        downloading.copy(download = StarterDownload.Failed("Not enough storage: need 2.2 GB, 1.4 GB free.")),
+        OnboardingActions(),
+      )
+    }
 
   private val loadFailed =
     ChatUiState(

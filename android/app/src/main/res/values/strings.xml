@@ -471,4 +471,43 @@
         <item quantity="one">This chat is already here</item>
         <item quantity="other">All %1$d chats are already here</item>
     </plurals>
+    <!-- Onboarding -->
+    <string name="onboarding_step">Step %1$d of %2$d</string>
+    <string name="onboarding_title">Chat with AI, privately</string>
+    <string name="onboarding_subtitle">Lomio runs open language models right on your phone.</string>
+    <string name="onboarding_private_title">Private by design</string>
+    <string name="onboarding_private_body">Your chats never leave this phone. No account, no analytics.</string>
+    <string name="onboarding_offline_title">Works offline</string>
+    <string name="onboarding_offline_body">After the one-time model download, no connection is needed.</string>
+    <string name="onboarding_open_title">Open models</string>
+    <string name="onboarding_open_body">Start with a small one; add others from Hugging Face later.</string>
+    <string name="onboarding_get_started">Get started</string>
+    <string name="onboarding_pick_title">Pick your first model</string>
+    <string name="onboarding_ram_gb">%1$d GB</string>
+    <string name="onboarding_pick_ram">Your phone has %1$s of memory. We picked one that runs well on it.</string>
+    <string name="onboarding_pick_note">Downloads once over the internet (Wi-Fi recommended). You can add or remove models any time.</string>
+    <string name="onboarding_download_size">Download · %1$s</string>
+    <string name="onboarding_download">Download</string>
+    <string name="onboarding_skip">Skip for now</string>
+    <string name="onboarding_recommended">Recommended</string>
+    <string name="onboarding_fit_fits">Fits</string>
+    <string name="onboarding_fit_tight">Tight</string>
+    <string name="onboarding_fit_too_big">Too big</string>
+    <string name="onboarding_download_complete">Download complete</string>
+    <string name="onboarding_download_failed">Download failed</string>
+    <string name="onboarding_failed_title">The download stopped</string>
+    <string name="onboarding_failed_generic">Download failed</string>
+    <string name="onboarding_downloading_title">Downloading %1$s</string>
+    <string name="onboarding_ready_title">%1$s is ready</string>
+    <string name="onboarding_ready_body">Everything from here on runs on your phone.</string>
+    <string name="onboarding_progress">%1$s of %2$s. You can leave this screen; the download keeps going.</string>
+    <string name="onboarding_percent">%1$d%%</string>
+    <string name="onboarding_starting">Starting…</string>
+    <string name="onboarding_loading">Loading…</string>
+    <string name="onboarding_start_chatting">Start chatting</string>
+    <string name="onboarding_try_again">Try again</string>
+    <string name="onboarding_pick_another">Pick another model</string>
+    <string name="onboarding_continue_background">Continue in the background</string>
+    <string name="onboarding_ready_title_generic">Your model is ready</string>
+    <string name="onboarding_downloading_title_generic">Downloading your model</string>
 </resources>
