@@ -8,6 +8,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Pinned llama.cpp checkout (git submodule, see android/llama/llama.cpp).
 set(LLAMA_SRC ${CMAKE_CURRENT_LIST_DIR}/../../../llama.cpp)
 
+# Reproducible builds (F-Droid): no absolute paths of this machine in the binaries. __FILE__ is
+# used by ggml's asserts and log macros; map the checkout and the NDK to fixed prefixes.
+get_filename_component(LOMIO_REPO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../../../.. ABSOLUTE)
+add_compile_options("-ffile-prefix-map=${LOMIO_REPO_ROOT}=." "-ffile-prefix-map=${ANDROID_NDK}=/ndk")
+
 # ---------------------------------------------------------------------------
 # llama.cpp build configuration
 # ---------------------------------------------------------------------------
