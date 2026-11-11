@@ -30,7 +30,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -86,6 +85,7 @@ class ApiServerEndToEndTest {
         it.copy(
           generation = GenerationSettings.DEFAULTS.copy(seed = 42),
           load = it.load.copy(nCtx = 256, nThreads = 2), // stories15M was trained with 256 tokens
+          onboardingDone = true,
         )
       }
       c.apiServer.settings.update { it.copy(port = PORT, lan = false) }
@@ -161,14 +161,22 @@ class ApiServerEndToEndTest {
     compose.onAllNodesWithText("2 replies served").onFirst().performScrollTo()
     screenshot("e2e_6_api_server")
 
-    // Off again: the port closes.
+    // Off again: the port closes. The listener can accept one more connection while close()
+    // unwinds, so wait until a connect is refused instead of sampling once.
     serverSwitch().performScrollTo().performClick()
     compose.waitUntil(20_000) { c.apiServer.status.value is ApiServerStatus.Stopped && !c.apiServer.isRunning }
-    // A raw connect: an HTTP client may report a closed listener as a reset instead.
-    try {
-      java.net.Socket("127.0.0.1", port).close()
-      fail("server still listening after it was switched off")
-    } catch (_: ConnectException) {}
+    val deadline = System.nanoTime() + 5_000_000_000L
+    var refused = false
+    while (System.nanoTime() < deadline) {
+      try {
+        java.net.Socket("127.0.0.1", port).close()
+      } catch (_: ConnectException) {
+        refused = true
+        break
+      }
+      Thread.sleep(100)
+    }
+    assertTrue("server still listening after it was switched off", refused)
     // ...and its ongoing notification is gone too.
     val nm = app.getSystemService(NotificationManager::class.java)
     compose.waitUntil(5_000) { nm.activeNotifications.none { it.id == ApiServerService.NOTIFICATION_ID } }

@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -26,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -198,6 +200,19 @@ fun LomioRoot(
   val notificationPermission =
     rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
+  // Already granted: don't launch the system dialog. In instrumentation tests that dialog is
+  // an empty activity which stops MainActivity while the API server is being switched off.
+  fun askNotificationPermission() {
+    if (Build.VERSION.SDK_INT < 33) return
+    if (
+      ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+        PackageManager.PERMISSION_GRANTED
+    ) {
+      return
+    }
+    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+  }
+
   // First run: no models yet and onboarding not finished (it stays up while its own download runs).
   val allModels by container.models.observeModels().collectAsStateWithLifecycle(initialValue = null)
   val onboardingStarted by onboardingVm.started.collectAsStateWithLifecycle()
@@ -214,7 +229,7 @@ fun LomioRoot(
           onBack = onboardingVm::back,
           onSelect = onboardingVm::select,
           onDownload = {
-            if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            askNotificationPermission()
             onboardingVm.download()
           },
           onRetry = { onboardingVm.retry() },
@@ -348,9 +363,7 @@ fun LomioRoot(
                 navigate(Screen.HF_SEARCH)
               },
               onDownloadRecommended = {
-                if (Build.VERSION.SDK_INT >= 33) {
-                  notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
+                askNotificationPermission()
                 modelsVm.downloadRecommended(it)
               },
               onImport = { importLauncher.launch(arrayOf("application/octet-stream", "*/*")) },
@@ -376,9 +389,7 @@ fun LomioRoot(
               onSort = modelsVm::setSort,
               onOpenRepo = modelsVm::openRepo,
               onDownload = {
-                if (Build.VERSION.SDK_INT >= 33) {
-                  notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
+                askNotificationPermission()
                 modelsVm.download(it)
               },
             ),
@@ -424,7 +435,7 @@ fun LomioRoot(
               ApiServerActions(
                 onEnabled = { on ->
                   // The server's ongoing notification (with its Stop button) needs this on 13+.
-                  if (on && Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                  if (on) askNotificationPermission()
                   apiVm.setEnabled(on)
                 },
                 onPort = { apiVm.setPort(it) },
