@@ -69,6 +69,7 @@ class AppContainer(context: Context) {
       modelsDir = { models.modelsDir },
       cacheDirs = { listOfNotNull(appContext.cacheDir, appContext.externalCacheDir) },
       databaseFiles = { listOf("lomio.db", "lomio.db-wal", "lomio.db-shm").map(appContext::getDatabasePath) },
+      chatCacheDir = { promptCache.dir },
     )
   val attachments = AttachmentStore(File(appContext.filesDir, "attachments"))
   val chats = ChatRepository(db, attachmentPath = { attachments.file(it).absolutePath })

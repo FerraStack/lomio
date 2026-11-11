@@ -23,6 +23,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import dev.lomio.ui.storage.CLEAR_CHAT_CACHES_TAG
+import dev.lomio.ui.storage.CLEAR_TEMP_TAG
 
 /**
  * Storage screen on a real device: the model's size on disk is shown, leftover files and
@@ -74,6 +76,8 @@ class StorageEndToEndTest {
         setLastModified(System.currentTimeMillis() - 60 * 60 * 1000)
       }
     val temp = File(app.cacheDir, "e2e-temp.bin").apply { writeBytes(ByteArray(200_000)) }
+    // A stand-in prompt cache: its own row, and "Temporary files" must leave it alone.
+    val chatCache = File(c.promptCache.dir.apply { mkdirs() }, "e2e-chat.lpc").apply { writeBytes(ByteArray(300_000)) }
 
     // Chat → drawer → Models → Storage, like a user.
     compose.onNodeWithContentDescription("Open menu").performClick()
@@ -94,8 +98,13 @@ class StorageEndToEndTest {
     assertFalse("empty folder pruned", orphan.parentFile!!.exists())
 
     scrollTo("Temporary files")
-    compose.onNode(hasText("Clear") and hasClickAction()).performClick()
+    compose.onNodeWithTag(CLEAR_TEMP_TAG).performClick()
     compose.waitUntil(10_000) { !temp.exists() }
+    assertTrue("clearing temporary files kept the chat caches", chatCache.exists())
+
+    scrollTo("Chat caches")
+    compose.onNodeWithTag(CLEAR_CHAT_CACHES_TAG).performClick()
+    compose.waitUntil(10_000) { !chatCache.exists() }
 
     scrollTo(MODEL_NAME)
     compose.onNodeWithContentDescription("Delete $MODEL_NAME").performClick()
