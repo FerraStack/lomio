@@ -1,5 +1,10 @@
 package dev.lomio.ui.drawer
 
+import dev.lomio.ui.components.LocalPermanentDrawer
+import androidx.compose.material3.PermanentDrawerSheet
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.width
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.outlined.FileDownload
@@ -96,7 +101,7 @@ fun DrawerContent(
   var renaming by remember { mutableStateOf<ConversationSummary?>(null) }
   var deleting by remember { mutableStateOf<ConversationSummary?>(null) }
   var exporting by remember { mutableStateOf<ConversationSummary?>(null) }
-  ModalDrawerSheet {
+  DrawerSheet {
     Column(Modifier.padding(horizontal = 12.dp)) {
       FilledTonalButton(
         onClick = actions.onNewChat,
@@ -255,5 +260,15 @@ private fun HistoryRow(
         onClick = { menu = false; onDelete() },
       )
     }
+  }
+}
+
+/** Modal sheet on phones, permanent sheet beside the content on large screens. */
+@Composable
+private fun DrawerSheet(content: @Composable ColumnScope.() -> Unit) {
+  if (LocalPermanentDrawer.current) {
+    PermanentDrawerSheet(Modifier.width(320.dp), content = content)
+  } else {
+    ModalDrawerSheet(content = content)
   }
 }

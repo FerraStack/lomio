@@ -4,6 +4,9 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import dev.lomio.ui.components.DrawerMenuButton
+import dev.lomio.ui.components.readableWidth
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -16,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -35,7 +39,6 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Lightbulb
-import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
@@ -93,7 +96,6 @@ import kotlinx.coroutines.delay
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -106,6 +108,9 @@ import androidx.compose.ui.res.stringResource
 import dev.lomio.R
 import dev.lomio.ui.components.chatTitle
 import dev.lomio.ui.settings.InheritedFrom
+
+/** Messages stay at a comfortable reading width on tablets and in landscape. */
+private val MessageMaxWidth = 800.dp
 
 enum class ModelStatus { NONE, LOADING, LOADED, FAILED }
 
@@ -218,9 +223,7 @@ fun ChatScreen(
     snackbarHost = { SnackbarHost(snackbar) },
     topBar = {
       CenterAlignedTopAppBar(
-        navigationIcon = {
-          IconButton(onClick = actions.onOpenDrawer) { Icon(Icons.Outlined.Menu, stringResource(R.string.action_open_menu)) }
-        },
+        navigationIcon = { DrawerMenuButton(actions.onOpenDrawer) },
         title = {
           Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -463,6 +466,7 @@ private fun MessageList(
       reverseLayout = true,
       contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.Bottom),
+      horizontalAlignment = Alignment.CenterHorizontally,
       modifier = Modifier.fillMaxSize(),
     ) {
       items(reversed, key = { it.id }, contentType = { it.role }) { m ->
@@ -482,9 +486,9 @@ private fun MessageList(
         )
         val itemModifier = Modifier.background(flash, RoundedCornerShape(12.dp))
         when (m.role) {
-          MessageRole.USER -> UserMessage(m, messageActions, itemModifier)
-          MessageRole.SYSTEM -> SummaryNote(m, itemModifier)
-          else -> AssistantMessage(m, showStats = showStats, actions = messageActions, modifier = itemModifier)
+          MessageRole.USER -> UserMessage(m, messageActions, itemModifier.widthIn(max = MessageMaxWidth))
+          MessageRole.SYSTEM -> SummaryNote(m, itemModifier.widthIn(max = MessageMaxWidth))
+          else -> AssistantMessage(m, showStats = showStats, actions = messageActions, modifier = itemModifier.widthIn(max = MessageMaxWidth))
         }
       }
     }
@@ -527,7 +531,12 @@ private fun Composer(
     }
   }
   Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
-    Column(Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
+    Column(
+      Modifier.fillMaxWidth()
+        .navigationBarsPadding()
+        .readableWidth(MessageMaxWidth + 24.dp)
+        .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
       if (editing) {
         Row(
           verticalAlignment = Alignment.CenterVertically,

@@ -31,6 +31,8 @@ import androidx.compose.material.icons.outlined.FileDownload
 import dev.lomio.ui.components.ExportFormatDialog
 
 import dev.lomio.ui.ExportFormat
+import dev.lomio.ui.components.DrawerMenuButton
+import dev.lomio.ui.components.readableWidth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -41,11 +43,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -78,6 +78,7 @@ import java.util.Locale
 import kotlin.math.roundToInt
 import androidx.compose.ui.res.stringResource
 import dev.lomio.R
+import dev.lomio.ui.components.systemPromptText
 
 /** Global settings (RESEARCH.md §9.3). Every change is applied immediately via [onChange]. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -104,12 +105,12 @@ fun SettingsScreen(
     topBar = {
       TopAppBar(
         title = { Text(stringResource(R.string.settings_title)) },
-        navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Outlined.Menu, stringResource(R.string.action_open_menu)) } },
+        navigationIcon = { DrawerMenuButton(onOpenDrawer) },
       )
     },
   ) { padding ->
     Column(
-      Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+      Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).readableWidth(720.dp).padding(horizontal = 16.dp),
       verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
       Section(stringResource(R.string.settings_appearance))
@@ -139,7 +140,7 @@ fun SettingsScreen(
 
       Section(stringResource(R.string.settings_chat))
       LocalTextField(
-        initial = settings.systemPrompt,
+        initial = systemPromptText(settings.systemPrompt),
         onValueChange = { v -> onChange { it.copy(systemPrompt = v) } },
         label = { Text(stringResource(R.string.settings_default_system_prompt)) },
         minLines = 3,
@@ -355,7 +356,7 @@ fun SliderRow(
   Column(Modifier.padding(vertical = 4.dp)) {
     Row {
       Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-      Text(valueText?.invoke(value) ?: String.format(Locale.US, format, value), style = MaterialTheme.typography.bodyMedium)
+      Text(valueText?.invoke(value) ?: String.format(Locale.getDefault(), format, value), style = MaterialTheme.typography.bodyMedium)
     }
     Slider(
       value = value.coerceIn(range),

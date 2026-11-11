@@ -89,7 +89,7 @@ fun OverridableSlider(
   range: ClosedFloatingPointRange<Float>,
   steps: Int,
   inheritedFrom: InheritedFrom,
-  format: (Float) -> String = { String.format(Locale.US, "%.2f", it) },
+  format: (Float) -> String = { String.format(Locale.getDefault(), "%.2f", it) },
   onChange: (Float?) -> Unit,
 ) {
   val value = own ?: base
