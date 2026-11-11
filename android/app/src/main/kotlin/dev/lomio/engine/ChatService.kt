@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import dev.lomio.data.settings.AppSettings
 
 /**
  * Runs chat turns. Lives in the app container (not a ViewModel) so a generation survives
@@ -176,7 +177,11 @@ class ChatService(
         chat = SettingsJson.decodeGen(conversation.genOverrideJson),
       )
     val systemPrompt =
-      SettingsResolver.systemPrompt(app.systemPrompt, modelSettings?.systemPrompt, conversation.systemPrompt)
+      SettingsResolver.systemPrompt(
+        app.systemPrompt.takeUnless { it == AppSettings.DEFAULT_SYSTEM_PROMPT } ?: messages.defaultSystemPrompt,
+        modelSettings?.systemPrompt,
+        conversation.systemPrompt,
+      )
 
     val info = (engine.state.value as? EngineState.Loaded)?.info
     // Images only reach a model loaded with its vision projector; otherwise the text goes alone.

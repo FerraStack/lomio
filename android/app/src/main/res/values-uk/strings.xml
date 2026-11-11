@@ -413,6 +413,7 @@
     <string name="summary_failed">Переказ не вдався; модель і далі бачить увесь чат.</string>
     <string name="summary_stopped">Зупинено; модель і далі бачить увесь чат.</string>
     <string name="summary_note">Тепер модель бачить цей переказ замість повідомлень вище.</string>
+    <string name="default_system_prompt">Ти — корисний асистент і відповідаєш стисло та по суті.</string>
     <plurals name="search_messages_count">
         <item quantity="one">%1$d повідомлення</item>
         <item quantity="few">%1$d повідомлення</item>

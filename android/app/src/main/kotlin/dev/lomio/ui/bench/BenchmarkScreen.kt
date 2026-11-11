@@ -1,5 +1,7 @@
 package dev.lomio.ui.bench
 
+import dev.lomio.ui.components.DrawerMenuButton
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,13 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -63,7 +62,7 @@ fun BenchmarkScreen(
     topBar = {
       TopAppBar(
         title = { Text(stringResource(R.string.bench_title)) },
-        navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Outlined.Menu, stringResource(R.string.action_open_menu)) } },
+        navigationIcon = { DrawerMenuButton(onOpenDrawer) },
       )
     },
   ) { padding ->

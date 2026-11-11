@@ -68,8 +68,11 @@ stats line. arm64 phones are not tested yet:
   loaded model. See [Local API server](#local-api-server).
 - English, Russian and Ukrainian, with proper plural forms and localized size units ("2,37 ГБ").
   On Android 13+ the language can be set for Lomio alone in system settings → Apps → Lomio.
+- Large screens: on expanded windows (≥ 840dp wide and ≥ 480dp tall: tablets, unfolded
+  foldables) the drawer stays open beside the chat; chat, settings and models keep a readable
+  width on wide and landscape screens.
 
-Not done yet: a vision projector for imported (local) models, importing split GGUF files, a tablet layout. Screenshots of every screen are
+Not done yet: a vision projector for imported (local) models, importing split GGUF files. Screenshots of every screen are
 posted by CI on each pull request; README screenshots are a TODO.
 
 ## Local API server
