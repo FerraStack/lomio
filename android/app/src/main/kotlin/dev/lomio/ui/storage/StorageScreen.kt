@@ -76,6 +76,7 @@ import dev.lomio.ui.components.Format
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import dev.lomio.R
+import androidx.compose.material.icons.outlined.History
 
 /** One model on the Storage screen. */
 data class StorageModelRow(
@@ -100,6 +101,8 @@ data class StorageUiState(
   val models: List<StorageModelRow> = emptyList(),
   val chatsBytes: Long = 0,
   val cacheBytes: Long = 0,
+  /** Saved prompt caches (lane 3's per-chat KV state on disk). */
+  val chatCacheBytes: Long = 0,
   val leftoverBytes: Long = 0,
   val leftoverCount: Int = 0,
   /** A delete or clean-up is running. */
@@ -110,7 +113,7 @@ data class StorageUiState(
     get() = models.sumOf { it.bytes }
 
   val otherBytes: Long
-    get() = chatsBytes + cacheBytes + leftoverBytes
+    get() = chatsBytes + cacheBytes + leftoverBytes + chatCacheBytes
 
   val lomioBytes: Long
     get() = modelsBytes + otherBytes
@@ -131,12 +134,15 @@ class StorageActions(
   val onBack: () -> Unit = {},
   val onDelete: (List<String>) -> Unit = {},
   val onClearCache: () -> Unit = {},
+  val onClearChatCaches: () -> Unit = {},
   val onRemoveLeftovers: () -> Unit = {},
   val onMessageShown: () -> Unit = {},
 )
 
 /** Lets tests find the screen's list among other scrollables (the drawer). */
 const val STORAGE_LIST_TAG = "storage-list"
+const val CLEAR_TEMP_TAG = "clear-temp"
+const val CLEAR_CHAT_CACHES_TAG = "clear-chat-caches"
 
 /** Tabular figures so sizes line up. */
 private const val TABULAR = "tnum"
@@ -426,8 +432,12 @@ private fun OtherGroup(state: StorageUiState, actions: StorageActions) {
   Group {
     OtherRow(Icons.AutoMirrored.Outlined.Chat, stringResource(R.string.storage_chats), stringResource(R.string.storage_chats_sub), state.chatsBytes)
     HorizontalDivider(Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant)
+    OtherRow(Icons.Outlined.History, stringResource(R.string.storage_chat_caches), stringResource(R.string.storage_chat_caches_sub), state.chatCacheBytes) {
+      TextButton(onClick = actions.onClearChatCaches, enabled = state.chatCacheBytes > 0 && !state.busy, modifier = Modifier.testTag(CLEAR_CHAT_CACHES_TAG)) { Text(stringResource(R.string.action_clear)) }
+    }
+    HorizontalDivider(Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant)
     OtherRow(Icons.Outlined.Cached, stringResource(R.string.storage_temp), stringResource(R.string.storage_temp_sub), state.cacheBytes) {
-      TextButton(onClick = actions.onClearCache, enabled = state.cacheBytes > 0 && !state.busy) { Text(stringResource(R.string.action_clear)) }
+      TextButton(onClick = actions.onClearCache, enabled = state.cacheBytes > 0 && !state.busy, modifier = Modifier.testTag(CLEAR_TEMP_TAG)) { Text(stringResource(R.string.action_clear)) }
     }
     if (state.leftoverCount > 0) {
       HorizontalDivider(Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant)

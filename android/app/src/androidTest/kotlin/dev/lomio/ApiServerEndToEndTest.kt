@@ -165,18 +165,17 @@ class ApiServerEndToEndTest {
     // unwinds, so wait until a connect is refused instead of sampling once.
     serverSwitch().performScrollTo().performClick()
     compose.waitUntil(20_000) { c.apiServer.status.value is ApiServerStatus.Stopped && !c.apiServer.isRunning }
-    val deadline = System.nanoTime() + 5_000_000_000L
-    var refused = false
-    while (System.nanoTime() < deadline) {
+    // A raw connect (an HTTP client may report a closed listener as a reset instead). The
+    // service stops asynchronously, so give the port a moment to close rather than one shot.
+    val refused = {
       try {
         java.net.Socket("127.0.0.1", port).close()
+        false
       } catch (_: ConnectException) {
-        refused = true
-        break
+        true
       }
-      Thread.sleep(100)
     }
-    assertTrue("server still listening after it was switched off", refused)
+    compose.waitUntil(10_000) { refused() }
     // ...and its ongoing notification is gone too.
     val nm = app.getSystemService(NotificationManager::class.java)
     compose.waitUntil(5_000) { nm.activeNotifications.none { it.id == ApiServerService.NOTIFICATION_ID } }

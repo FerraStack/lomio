@@ -237,6 +237,11 @@ ccache.
 screenshots when it closes and squashes the branch weekly. All actions are pinned to commit
 SHAs (Dependabot proposes updates); workflows default to `contents: read`.
 
+[`reproducible.yml`](.github/workflows/reproducible.yml) builds the unsigned arm64 release APK
+twice, on two runners, in two checkout paths, without caches, and compares the APKs entry by
+entry (on main, weekly, and on PRs that touch the build). The store listing for F-Droid lives
+in `fastlane/metadata/android/` (en-US, ru, uk). See [docs/RELEASING.md](docs/RELEASING.md).
+
 ## License
 
 Apache-2.0. llama.cpp is MIT. Some UI behaviour is modelled on PocketPal AI (MIT).

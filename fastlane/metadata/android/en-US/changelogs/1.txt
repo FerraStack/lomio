@@ -1,0 +1,1 @@
+First release: chat with local GGUF models (llama.cpp), Hugging Face downloads, image input for vision models, chat history with export, per-model settings, a context meter with Summarize & continue, and an experimental GPU option for Snapdragon phones.
