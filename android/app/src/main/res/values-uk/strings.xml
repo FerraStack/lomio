@@ -504,4 +504,44 @@
         <item quantity="many">%1$d частин</item>
         <item quantity="other">%1$d частини</item>
     </plurals>
+
+    <!-- Onboarding -->
+    <string name="onboarding_step">Крок %1$d з %2$d</string>
+    <string name="onboarding_title">Чат зі ШІ — приватно</string>
+    <string name="onboarding_subtitle">Lomio запускає відкриті мовні моделі просто на вашому телефоні.</string>
+    <string name="onboarding_private_title">Приватність за замовчуванням</string>
+    <string name="onboarding_private_body">Ваші чати не залишають телефон. Без акаунта й без аналітики.</string>
+    <string name="onboarding_offline_title">Працює офлайн</string>
+    <string name="onboarding_offline_body">Після одноразового завантаження моделі інтернет не потрібен.</string>
+    <string name="onboarding_open_title">Відкриті моделі</string>
+    <string name="onboarding_open_body">Почніть з невеликої, інші можна додати з Hugging Face пізніше.</string>
+    <string name="onboarding_get_started">Почати</string>
+    <string name="onboarding_pick_title">Оберіть першу модель</string>
+    <string name="onboarding_ram_gb">%1$d ГБ</string>
+    <string name="onboarding_pick_ram">У вашому телефоні %1$s пам’яті. Ми обрали модель, яка добре на ньому працює.</string>
+    <string name="onboarding_pick_note">Завантажується один раз через інтернет (краще через Wi‑Fi). Моделі можна додавати й видаляти будь-коли.</string>
+    <string name="onboarding_download_size">Завантажити · %1$s</string>
+    <string name="onboarding_download">Завантажити</string>
+    <string name="onboarding_skip">Пропустити</string>
+    <string name="onboarding_recommended">Рекомендуємо</string>
+    <string name="onboarding_fit_fits">Підходить</string>
+    <string name="onboarding_fit_tight">Впритул</string>
+    <string name="onboarding_fit_too_big">Завелика</string>
+    <string name="onboarding_download_complete">Завантаження завершено</string>
+    <string name="onboarding_download_failed">Не вдалося завантажити</string>
+    <string name="onboarding_failed_title">Завантаження перервалося</string>
+    <string name="onboarding_failed_generic">Не вдалося завантажити</string>
+    <string name="onboarding_downloading_title">Завантажуємо %1$s</string>
+    <string name="onboarding_ready_title">%1$s готова</string>
+    <string name="onboarding_ready_body">Далі все працює на вашому телефоні.</string>
+    <string name="onboarding_progress">%1$s з %2$s. Можна піти з цього екрана — завантаження триватиме.</string>
+    <string name="onboarding_percent">%1$d\u00A0%%</string>
+    <string name="onboarding_starting">Починаємо…</string>
+    <string name="onboarding_loading">Завантаження…</string>
+    <string name="onboarding_start_chatting">Почати чат</string>
+    <string name="onboarding_try_again">Повторити</string>
+    <string name="onboarding_pick_another">Обрати іншу модель</string>
+    <string name="onboarding_continue_background">Продовжити у фоні</string>
+    <string name="onboarding_ready_title_generic">Модель готова</string>
+    <string name="onboarding_downloading_title_generic">Завантажуємо модель</string>
 </resources>
