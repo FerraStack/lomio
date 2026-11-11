@@ -1,5 +1,9 @@
 package dev.lomio.ui.models
 
+import dev.lomio.ui.components.DrawerMenuButton
+import dev.lomio.ui.components.WindowWidths
+import androidx.compose.foundation.layout.BoxWithConstraints
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,7 +27,6 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.WarningAmber
@@ -142,7 +145,7 @@ fun ModelsScreen(state: ModelsUiState, actions: ModelsActions, modifier: Modifie
     topBar = {
       TopAppBar(
         title = { Text(stringResource(R.string.models_title)) },
-        navigationIcon = { IconButton(onClick = actions.onOpenDrawer) { Icon(Icons.Outlined.Menu, stringResource(R.string.action_open_menu)) } },
+        navigationIcon = { DrawerMenuButton(actions.onOpenDrawer) },
         actions = {
           IconButton(onClick = actions.onSearchHf) { Icon(Icons.Outlined.Search, stringResource(R.string.models_search_hf)) }
           IconButton(onClick = actions.onStorage) { Icon(Icons.Outlined.Storage, stringResource(R.string.models_storage)) }
@@ -171,10 +174,13 @@ fun ModelsScreen(state: ModelsUiState, actions: ModelsActions, modifier: Modifie
       }
     },
   ) { padding ->
+    BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
+    // Centered column on wide screens; the whole width still scrolls.
+    val side = maxOf(16.dp, (maxWidth - WindowWidths.Readable) / 2)
     LazyColumn(
-      contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+      contentPadding = PaddingValues(start = side, end = side, top = 8.dp, bottom = 96.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
-      modifier = Modifier.fillMaxSize().padding(padding),
+      modifier = Modifier.fillMaxSize(),
     ) {
       item { SectionTitle(stringResource(R.string.models_on_device)) }
       if (state.models.isEmpty()) {
@@ -190,6 +196,7 @@ fun ModelsScreen(state: ModelsUiState, actions: ModelsActions, modifier: Modifie
         item { SectionTitle(stringResource(R.string.models_recommended)) }
         items(state.recommended, key = { it.model.repo }) { RecommendedCard(it, actions) }
       }
+    }
     }
   }
 }

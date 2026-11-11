@@ -66,6 +66,7 @@ import dev.lomio.R
 import androidx.annotation.StringRes
 import androidx.compose.ui.platform.LocalContext
 import dev.lomio.ui.settings.InheritedFrom
+import dev.lomio.ui.components.systemPromptText
 
 enum class TemplateMode(@StringRes val label: Int) { GGUF(R.string.ms_tmpl_gguf), PRESET(R.string.ms_tmpl_preset), CUSTOM(R.string.ms_tmpl_custom) }
 
@@ -167,7 +168,7 @@ fun ModelSettingsScreen(state: ModelSettingsUiState, actions: ModelSettingsActio
         minLines = 3,
         supporting =
           if (state.globalSystemPrompt.isBlank()) stringResource(R.string.ms_prompt_empty_none)
-          else stringResource(R.string.ms_prompt_empty_global, state.globalSystemPrompt.lineSequence().first().take(60)),
+          else stringResource(R.string.ms_prompt_empty_global, systemPromptText(state.globalSystemPrompt).lineSequence().first().take(60)),
       )
 
       Section(stringResource(R.string.ms_generation), stringResource(R.string.ms_generation_sub))

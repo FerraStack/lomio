@@ -61,12 +61,30 @@ class ChatServiceTest {
 
   @After fun tearDown() = db.close()
 
-  private fun TestScope.service(): ChatService {
+  private fun TestScope.service(text: EngineText = EngineText()): ChatService {
     val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
     val settings =
       SettingsRepository(PreferenceDataStoreFactory.create(scope = backgroundScope) { File(tmp.root, "s.preferences_pb") })
     val models = ModelRepository(ctx, db, DownloadScheduler(ctx), GgufReader { null })
-    return ChatService(engine, { activeModel }, chats, models, settings, backgroundScope)
+    lastSettings = settings
+    return ChatService(engine, { activeModel }, chats, models, settings, backgroundScope, text)
+  }
+
+  private lateinit var lastSettings: SettingsRepository
+
+  @Test
+  fun theUntouchedDefaultSystemPromptIsSentInTheAppsLanguage() = runTest {
+    val s = service(EngineText(defaultSystemPrompt = "Ты — полезный ассистент."))
+    val c = chats.create("m1")
+    assertTrue(s.send(c.id, "hi"))
+    s.awaitIdle()
+    assertEquals("Ты — полезный ассистент.", engine.lastMessages.first { it.role == "system" }.content)
+
+    // Once the user has written their own prompt, it is sent as is.
+    lastSettings.update { it.copy(systemPrompt = "Answer in haiku.") }
+    assertTrue(s.send(c.id, "again"))
+    s.awaitIdle()
+    assertEquals("Answer in haiku.", engine.lastMessages.first { it.role == "system" }.content)
   }
 
   /** Waits in real time: Room runs on its own threads, so virtual-time timeouts would misfire. */
