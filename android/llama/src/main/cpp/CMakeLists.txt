@@ -38,6 +38,15 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     # 8.6+i8mm / 9.0+sve2 / 9.2+sme); ggml scores them and loads the best one.
     set(GGML_CPU_ALL_VARIANTS ON  CACHE BOOL "" FORCE)
     set(GGML_CPU_KLEIDIAI     ON  CACHE BOOL "" FORCE)
+    # KleidiAI comes from a submodule pinned to the release ggml expects (v1.32.0), not from a
+    # download at configure time: offline and reproducible builds (F-Droid), no flaky fetches.
+    set(LOMIO_KLEIDIAI_TAG "v1.32.0")
+    file(STRINGS ${LLAMA_SRC}/ggml/src/ggml-cpu/CMakeLists.txt GGML_KLEIDIAI_TAG_LINE REGEX "KLEIDIAI_COMMIT_TAG \"")
+    if(NOT GGML_KLEIDIAI_TAG_LINE MATCHES "\"${LOMIO_KLEIDIAI_TAG}\"")
+        message(FATAL_ERROR "llama.cpp now wants another KleidiAI (${GGML_KLEIDIAI_TAG_LINE}): "
+                            "update the android/llama/kleidiai submodule and LOMIO_KLEIDIAI_TAG")
+    endif()
+    set(FETCHCONTENT_SOURCE_DIR_KLEIDIAI ${CMAKE_CURRENT_LIST_DIR}/../../../kleidiai CACHE PATH "" FORCE)
     if(LOMIO_OPENCL)
         # The NDK has no OpenCL: compile against the Khronos headers (submodule) and link
         # against a stub libOpenCL.so made of the entry points ggml-opencl calls. The stub is

@@ -414,6 +414,7 @@
     <string name="summary_failed">The summary failed; the model still sees the full chat.</string>
     <string name="summary_stopped">Stopped; the model still sees the full chat.</string>
     <string name="summary_note">The model now sees this summary instead of the messages above.</string>
+    <string name="default_system_prompt">You are a helpful, concise assistant.</string>
     <plurals name="search_messages_count">
         <item quantity="one">%1$d message</item>
         <item quantity="other">%1$d messages</item>
