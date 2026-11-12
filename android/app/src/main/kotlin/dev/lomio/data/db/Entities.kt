@@ -46,6 +46,11 @@ data class ModelEntity(
   @ColumnInfo(name = "mmproj_path") val mmprojPath: String? = null,
   @ColumnInfo(name = "mmproj_size") val mmprojSize: Long? = null,
   @ColumnInfo(name = "mmproj_sha256") val mmprojSha256: String? = null,
+  /**
+   * A model split into several GGUF files: JSON list of every part (see dev.lomio.data.ModelFiles),
+   * the first being [hfFile]/[filePath]; [sizeBytes] is then the total. Null for a single file.
+   */
+  val shards: String? = null,
 )
 
 /** True when the model comes with a vision projector (it may still be downloading). */

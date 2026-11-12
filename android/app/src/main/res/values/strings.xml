@@ -139,7 +139,7 @@
     <string name="hf_files_title">Available GGUF files</string>
     <string name="hf_no_files">No GGUF files in this repo.</string>
     <string name="hf_projector">Vision projector (not supported yet)</string>
-    <string name="hf_split">Split file (not supported yet)</string>
+    <string name="hf_split">Some parts of this split model are missing</string>
     <string name="hf_fits">Fits</string>
     <string name="hf_tight">Tight</string>
     <string name="hf_wont_fit">Won\'t fit</string>
@@ -470,6 +470,10 @@
     <plurals name="import_all_present">
         <item quantity="one">This chat is already here</item>
         <item quantity="other">All %1$d chats are already here</item>
+    </plurals>
+    <plurals name="model_parts">
+        <item quantity="one">%1$d part</item>
+        <item quantity="other">%1$d parts</item>
     </plurals>
     <!-- Onboarding -->
     <string name="onboarding_step">Step %1$d of %2$d</string>

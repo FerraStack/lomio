@@ -138,7 +138,7 @@
     <string name="hf_files_title">Доступные файлы GGUF</string>
     <string name="hf_no_files">В этом репозитории нет файлов GGUF.</string>
     <string name="hf_projector">Проектор для изображений (пока не поддерживается)</string>
-    <string name="hf_split">Разделённый файл (пока не поддерживается)</string>
+    <string name="hf_split">Не хватает частей этой разделённой модели</string>
     <string name="hf_fits">Подходит</string>
     <string name="hf_tight">Впритык</string>
     <string name="hf_wont_fit">Не поместится</string>
@@ -497,6 +497,12 @@
         <item quantity="few">Все %1$d чата уже есть</item>
         <item quantity="many">Все %1$d чатов уже есть</item>
         <item quantity="other">Все %1$d чата уже есть</item>
+    </plurals>
+    <plurals name="model_parts">
+        <item quantity="one">%1$d часть</item>
+        <item quantity="few">%1$d части</item>
+        <item quantity="many">%1$d частей</item>
+        <item quantity="other">%1$d части</item>
     </plurals>
 
     <!-- Onboarding -->

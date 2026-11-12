@@ -2,6 +2,7 @@ package dev.lomio.engine
 
 import android.app.ActivityManager
 import android.content.Context
+import dev.lomio.data.ModelFiles
 import dev.lomio.data.ModelRepository
 import dev.lomio.data.db.ModelEntity
 import dev.lomio.data.db.ModelState
@@ -122,7 +123,8 @@ class ModelManager(
     mutex.withLock {
       val model = models.get(modelId) ?: return LoadOutcome.Failed(messages.modelNotFound)
       val path = model.filePath
-      if (model.state != ModelState.READY || path == null || !File(path).exists()) {
+      // A split model loads via its first part, but llama.cpp needs every part next to it.
+      if (model.state != ModelState.READY || path == null || ModelFiles.weights(model).any { !it.exists() }) {
         return LoadOutcome.Failed(messages.notDownloaded(model.displayName))
       }
       val load = loadSettingsFor(modelId)

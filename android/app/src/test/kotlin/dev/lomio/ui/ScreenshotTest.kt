@@ -187,6 +187,17 @@ class ScreenshotTest {
             vision = true,
           ),
           ModelCardState(
+            id = "s1",
+            name = "Qwen3 32B",
+            subtitle = "unsloth/Qwen3-32B-GGUF",
+            quant = "Q6_K",
+            sizeBytes = 26_880_000_000,
+            params = 32_800_000_000,
+            contextLength = 40960,
+            fit = Fit.WONT_FIT,
+            parts = 2,
+          ),
+          ModelCardState(
             id = "m2",
             name = "gemma 3 4b it",
             subtitle = "unsloth/gemma-3-4b-it-GGUF",
@@ -833,6 +844,34 @@ class ScreenshotTest {
     )
 
   @Test fun hfRepoVisionLight() = shoot("hf_repo_vision", dark = false) { HfSearchScreen(hfVisionRepo, HfActions()) }
+
+  /** A repo with split models: each quant is one row ("2 parts"); one with a part missing. */
+  private val qwenBig = "unsloth/Qwen3-32B-GGUF"
+
+  private fun qwenPart(quant: String, n: Int, of: Int, size: Long) =
+    HfFile(qwenBig, "$quant/Qwen3-32B-$quant-0000$n-of-0000$of.gguf", size, "s$quant$n")
+
+  private val hfSplitRepo =
+    HfUiState(
+      repo = qwenBig,
+      files =
+        dev.lomio.data.hf.Shards.group(
+            listOf(
+              HfFile(qwenBig, "Qwen3-32B-Q4_K_M.gguf", 19_762_149_536, "a"),
+              qwenPart("Q6_K", 1, 2, 14_000_000_000),
+              qwenPart("Q6_K", 2, 2, 12_880_000_000),
+              qwenPart("Q8_0", 1, 2, 17_500_000_000),
+              qwenPart("Q8_0", 2, 2, 17_300_000_000),
+              qwenPart("BF16", 1, 3, 23_000_000_000),
+              qwenPart("BF16", 3, 3, 19_600_000_000),
+            )
+          )
+          .map { HfFileRow(it, Fit.WONT_FIT, false) },
+    )
+
+  @Test fun hfRepoSplitLight() = shoot("hf_repo_split", dark = false) { HfSearchScreen(hfSplitRepo, HfActions()) }
+
+  @Test fun hfRepoSplitDark() = shoot("hf_repo_split", dark = true) { HfSearchScreen(hfSplitRepo, HfActions()) }
 
   @Test fun hfRepoVisionDark() = shoot("hf_repo_vision", dark = true) { HfSearchScreen(hfVisionRepo, HfActions()) }
 
