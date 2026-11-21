@@ -14,6 +14,10 @@ for layer in background foreground monochrome; do
     "Generated from branding/icon/ic_launcher_$layer.svg by branding/icon/tools/build.sh; edit the generator, not this file."
 done
 rsvg-convert -w 512 -h 512 "$ICON/icon.svg" -o "$ICON/icon-512.png"
+FASTLANE=${FASTLANE:-$ICON/../../fastlane/metadata/android/en-US/images}
+if [ -d "$FASTLANE" ]; then
+  cp "$ICON/icon-512.png" "$FASTLANE/icon.png"
+fi
 tmp=$(mktemp -d)
 python3 "$TOOLS/preview.py" "$APP" "$tmp/preview.svg"
 rsvg-convert "$tmp/preview.svg" -o "$ICON/preview.png"

@@ -1,22 +1,12 @@
 # Releasing Lomio
 
-How a release is cut, and what F-Droid needs. Signing keys are the founder's decision. Nothing
-in this repository creates, stores or uses one.
-
-## Before the first release
-
-These are open decisions, not tasks for CI:
-
-- **App icon.** The launcher icon is still the Android Studio template (the green Android). The
-  store listing has no `icon.png` on purpose. Without one, F-Droid uses the APK's icon, so the
-  template would be what users see. Add `fastlane/metadata/android/en-US/images/icon.png`
-  (512 × 512 PNG) together with the real launcher icon.
-- **Signing key.** Who holds it, where, and with what backup. See "Signing" below.
-- **Version.** `versionCode = 1`, `versionName = "0.1.0"` in `android/app/build.gradle.kts`.
+How a release is cut, signed, published on GitHub Releases, and built reproducibly for F-Droid.
+The repository itself contains no signing keys or signing configuration in Gradle: release APKs
+are built unsigned and signed externally with `apksigner`.
 
 ## Versioning
 
-- `versionName` follows semver: `0.y.z` while pre-1.0.
+- `versionName` follows semver (`MAJOR.MINOR.PATCH`, e.g. `1.0.0`).
 - `versionCode` goes up by 1 for every release that reaches users, including betas. F-Droid and
   Android refuse to install a lower `versionCode` over a higher one.
 - Each `versionCode` gets a changelog in every store language, at
@@ -30,12 +20,13 @@ F-Droid and other stores read `fastlane/metadata/android/`:
 ```
 fastlane/metadata/android/
 ├── en-US/  title.txt, short_description.txt (≤ 80 chars), full_description.txt (basic HTML),
-│           changelogs/<versionCode>.txt, images/phoneScreenshots/1.png…
+│           changelogs/<versionCode>.txt, images/icon.png (512×512), images/phoneScreenshots/1.png…
 ├── ru/     the same in Russian
 └── uk/     the same in Ukrainian
 ```
 
-Locales without their own screenshots fall back to en-US.
+Locales without their own icon or screenshots fall back to `en-US`. The launcher icon and
+`en-US/images/icon.png` are generated from `branding/icon/` via `branding/icon/tools/build.sh lomio`.
 
 **Screenshots** come from the Roborazzi set CI renders on every PR (`ScreenshotTest`, fake
 data, Pixel 7 size). To refresh them:
@@ -49,38 +40,55 @@ Keep the set small (6–8). Light theme reads best in store galleries.
 
 ## Cutting a release
 
-1. Update `versionCode`, `versionName` and the three changelogs. Merge to main.
-2. Check that the **Reproducible build** workflow is green on that commit (see below).
-3. Tag it: `git tag -s v0.1.0 -m "Lomio 0.1.0" && git push origin v0.1.0`.
-4. Build the release APK from the tag, arm64 only (32-bit ARM phones can't run useful models):
+1. Update `versionCode`, `versionName` (in `android/app/build.gradle.kts`) and the three
+   changelogs. Merge to `main`.
+2. Check that **CI** and **Reproducible build** are green on that commit (see below).
+3. Tag `main` and push the tag:
 
    ```sh
-   git clone --recurse-submodules --branch v0.1.0 https://github.com/FerraStack/lomio
-   cd lomio/android
-   ./gradlew -Plomio.abis=arm64-v8a assembleRelease
-   # -> app/build/outputs/apk/release/app-release-unsigned.apk
+   git tag -s v1.0.0 -m "Lomio 1.0.0"
+   git push origin v1.0.0
    ```
 
-5. Sign it (founder, see below). Attach it to a GitHub release with the changelog.
+4. [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs automatically on any
+   pushed `v*` tag (and can also be triggered manually via `workflow_dispatch`):
+   - **`version`**: checks that the tag `vX.Y.Z` matches `versionName` in
+     `android/app/build.gradle.kts` and that the tagged commit is an ancestor of `origin/main`.
+   - **`build`**: builds the unsigned arm64 release APK
+     (`-Plomio.abis=arm64-v8a assembleRelease --no-configuration-cache`), verifies that
+     `libOpenCL.so` is not packaged and that the APK is 16 KB aligned (`zipalign -c -P 16 -v 4`),
+     signs it externally with `apksigner` into `dist/lomio-<version>-arm64-v8a.apk`, verifies the
+     signature with `apksigner verify --verbose`, writes `SHA256SUMS`, uploads both `dist/` and
+     the R8 `mapping.txt` as workflow artifacts, and removes the temporary keystore file in
+     `if: always()`.
+   - **`publish`**: downloads `dist/`, checks `sha256sum --check SHA256SUMS`, and publishes the
+     GitHub Release (`lomio-<version>-arm64-v8a.apk` and `SHA256SUMS`, marked as prerelease if
+     the tag contains `-`).
 
 ## Signing
 
-The repository has no signing configuration: release builds come out unsigned. Signing happens
-outside the build, with `apksigner` (from the Android SDK build-tools) and a key only the
-founder controls:
+`android/app/build.gradle.kts` intentionally has no `signingConfigs` block so release builds come
+out unsigned and reproducible for F-Droid.
+
+For GitHub Releases, `.github/workflows/release.yml` signs the unsigned APK externally with
+`apksigner` using four repository secrets:
+
+- `ANDROID_KEYSTORE_BASE64` — base64-encoded release keystore
+- `ANDROID_STORE_PASSWORD` — keystore password
+- `ANDROID_KEY_ALIAS` — key alias inside the keystore
+- `ANDROID_KEY_PASSWORD` — key password
+
+To build and sign locally by hand:
 
 ```sh
-apksigner sign --ks <keystore> --out lomio-0.1.0.apk app-release-unsigned.apk
-apksigner verify --print-certs lomio-0.1.0.apk
+git clone --recurse-submodules --branch v1.0.0 https://github.com/FerraStack/lomio
+cd lomio/android
+./gradlew -Plomio.abis=arm64-v8a assembleRelease --no-configuration-cache
+# -> app/build/outputs/apk/release/app-release-unsigned.apk
+apksigner sign --ks <keystore> --ks-key-alias <alias> \
+  --out lomio-1.0.0-arm64-v8a.apk app/build/outputs/apk/release/app-release-unsigned.apk
+apksigner verify --verbose --print-certs lomio-1.0.0-arm64-v8a.apk
 ```
-
-Decisions for the founder:
-
-- A new key, or F-Droid's key (F-Droid signs with its own key unless the build is
-  reproducible).
-- Key backup, and whether to also use Play App Signing later. One key can't be replaced after
-  users install the app.
-- Whether to enable APK Signature Scheme v3 key rotation.
 
 ## F-Droid
 
@@ -101,9 +109,9 @@ RepoType: git
 Repo: https://github.com/FerraStack/lomio
 
 Builds:
-  - versionName: 0.1.0
+  - versionName: 1.0.0
     versionCode: 1
-    commit: v0.1.0
+    commit: v1.0.0
     subdir: android/app
     submodules: true
     sudo:

@@ -2,7 +2,6 @@ package dev.lomio.domain
 
 import dev.lomio.data.db.ConversationSummary
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
@@ -22,11 +21,11 @@ object HistoryGrouping {
     now: Instant,
     zone: ZoneId,
   ): List<Pair<HistoryBucket, List<ConversationSummary>>> {
-    val today = LocalDate.ofInstant(now, zone)
+    val today = now.atZone(zone).toLocalDate()
     val grouped =
       items.groupBy { item ->
         if (item.pinned) return@groupBy HistoryBucket.PINNED
-        val day = LocalDate.ofInstant(Instant.ofEpochMilli(item.updatedAt), zone)
+        val day = Instant.ofEpochMilli(item.updatedAt).atZone(zone).toLocalDate()
         val days = ChronoUnit.DAYS.between(day, today)
         when {
           days <= 0 -> HistoryBucket.TODAY

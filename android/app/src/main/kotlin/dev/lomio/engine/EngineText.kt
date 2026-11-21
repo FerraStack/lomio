@@ -17,4 +17,6 @@ data class EngineText(
   /** The global system prompt while the user has never edited it (localized default). */
   val defaultSystemPrompt: String = AppSettings.DEFAULT_SYSTEM_PROMPT,
   val gpuCrashNotice: String = "The app closed while loading a model on the GPU, so GPU acceleration was turned off.",
+  /** Takes the reason the GPU could not be used. */
+  val gpuFallbackNotice: (String) -> String = { "GPU acceleration isn't working ($it). Running on the CPU." },
 )

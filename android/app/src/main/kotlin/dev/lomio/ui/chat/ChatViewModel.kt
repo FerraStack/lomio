@@ -163,7 +163,7 @@ class ChatViewModel(private val c: AppContainer) : ViewModel() {
       for (uri in uris.take((MAX_ATTACHMENTS - pending.value.size).coerceAtLeast(0))) {
         runCatching { c.attachments.import(c.appContext.contentResolver, uri) }
           .onSuccess { name -> pending.value = (pending.value + name).take(MAX_ATTACHMENTS) }
-          .onFailure { localError.value = it.message ?: "Couldn't attach the image" }
+          .onFailure { localError.value = it.message ?: c.text.getString(R.string.err_attach_image) }
       }
     }
 

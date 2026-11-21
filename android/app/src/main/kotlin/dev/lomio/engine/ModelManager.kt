@@ -145,9 +145,8 @@ class ModelManager(
       crashGuard.beginLoad(modelId, gpu = gpuLayers > 0)
       try {
         val info = engine.load(path, load.toLoadParams().copy(mmprojPath = mmproj, nGpuLayers = gpuLayers))
-        _gpuNotice.value =
-          if (gpuLayers > 0 && info.gpuNote != null) "GPU acceleration isn't working (${info.gpuNote}). Running on the CPU."
-          else null
+        val gpuNote = info.gpuNote
+        _gpuNotice.value = if (gpuLayers > 0 && gpuNote != null) messages.gpuFallbackNotice(gpuNote) else null
         _activeModelId.value = modelId
         activeLoad = load
         _crashedModelId.value = null

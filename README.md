@@ -1,18 +1,28 @@
 # Lomio
 
+[![CI](https://github.com/FerraStack/lomio/actions/workflows/ci.yml/badge.svg)](https://github.com/FerraStack/lomio/actions/workflows/ci.yml)
+[![Reproducible build](https://github.com/FerraStack/lomio/actions/workflows/reproducible.yml/badge.svg)](https://github.com/FerraStack/lomio/actions/workflows/reproducible.yml)
+
 Chat with local language models on your Android phone. Lomio is a clean "ChatGPT for local
 models": download GGUF models from Hugging Face (or import your own), chat with streaming
 replies, keep your history on the device. No account, no analytics, no cloud.
 
+Download signed arm64 APKs from [GitHub Releases](https://github.com/FerraStack/lomio/releases).
+
 It follows the interface of [PocketPal AI](https://github.com/a-ghorbani/pocketpal-ai), without
 personas ("Pals"), the marketplace, voice and other extras.
 
-## Status
+## Screenshots
 
-**Pre-alpha.** The first code drop (milestones M0–M3 from
-[docs/RESEARCH.md](docs/RESEARCH.md#10-mvp-milestones)) is in place. CI runs the real native
-engine end to end on an x86_64 emulator: it loads a tiny GGUF, streams a reply and checks the
-stats line. arm64 phones are not tested yet:
+| Chat & code | Markdown tables | Vision | Models |
+|---|---|---|---|
+| <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="200" alt="Chat with code and reasoning"> | <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="200" alt="Chat with Markdown tables"> | <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="200" alt="Vision chat with image attachment"> | <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" width="200" alt="Models screen"> |
+
+| Hugging Face | Model settings | Storage | Settings |
+|---|---|---|---|
+| <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5.png" width="200" alt="Hugging Face GGUF files"> | <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/6.png" width="200" alt="Per-model settings"> | <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/7.png" width="200" alt="Storage screen"> | <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/8.png" width="200" alt="Settings screen"> |
+
+## Features
 
 - First run: three short screens: what Lomio is, a starter model picked for the phone's RAM, and
   its download, then straight into the first chat.
@@ -74,8 +84,7 @@ stats line. arm64 phones are not tested yet:
   foldables) the drawer stays open beside the chat; chat, settings and models keep a readable
   width on wide and landscape screens.
 
-Not done yet: a vision projector for imported (local) models, importing split GGUF files. Screenshots of every screen are
-posted by CI on each pull request; README screenshots are a TODO.
+Not done yet: a vision projector for imported (local) models, importing split GGUF files. Screenshots of every screen are also posted by CI on each pull request.
 
 ## Local API server
 
@@ -239,8 +248,10 @@ SHAs (Dependabot proposes updates); workflows default to `contents: read`.
 
 [`reproducible.yml`](.github/workflows/reproducible.yml) builds the unsigned arm64 release APK
 twice, on two runners, in two checkout paths, without caches, and compares the APKs entry by
-entry (on main, weekly, and on PRs that touch the build). The store listing for F-Droid lives
-in `fastlane/metadata/android/` (en-US, ru, uk). See [docs/RELEASING.md](docs/RELEASING.md).
+entry (on main, weekly, and on PRs that touch the build).
+[`release.yml`](.github/workflows/release.yml) builds, verifies, externally signs, and publishes
+signed arm64 APKs with `SHA256SUMS` to GitHub Releases on `v*` tags. The store listing for F-Droid
+lives in `fastlane/metadata/android/` (en-US, ru, uk). See [docs/RELEASING.md](docs/RELEASING.md).
 
 ## License
 

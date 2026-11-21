@@ -1,0 +1,237 @@
+name: Release
+
+# Builds the unsigned arm64 release APK on a pushed v* tag (or manual workflow_dispatch),
+# verifies its packaging and alignment, signs it externally with apksigner, and publishes
+# the signed APK and SHA256SUMS to GitHub Releases. See docs/RELEASING.md.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing v* tag to release (defaults to ref name when run on a tag)"
+        required: false
+        type: string
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      version: ${{ steps.check.outputs.version }}
+      commit: ${{ steps.check.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag, versionName, and main ancestry
+        id: check
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "$INPUT_TAG" ]]; then
+            TAG="$INPUT_TAG"
+          elif [[ "$REF_TYPE" == "tag" ]]; then
+            TAG="$REF_NAME"
+          else
+            echo "::error::Release workflow must run on a v* tag or specify the 'tag' input."
+            exit 1
+          fi
+
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag '$TAG' does not match vX.Y.Z or vX.Y.Z-prerelease."
+            exit 1
+          fi
+
+          git fetch --force origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+
+          COMMIT="$(git rev-parse --verify "refs/tags/${TAG}^{commit}")"
+          git checkout --detach "$COMMIT"
+
+          if ! git merge-base --is-ancestor "$COMMIT" origin/main; then
+            echo "::error::Tag '$TAG' ($COMMIT) is not an ancestor of origin/main."
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          GRADLE_VERSION="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' android/app/build.gradle.kts | head -n 1)"
+          if [[ "$GRADLE_VERSION" != "$VERSION" ]]; then
+            echo "::error::Tag version '$VERSION' does not match android/app/build.gradle.kts versionName '$GRADLE_VERSION'."
+            exit 1
+          fi
+
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "commit=$COMMIT"
+          } >> "$GITHUB_OUTPUT"
+          echo "Validated release tag $TAG (version $VERSION) at $COMMIT."
+
+  build:
+    name: Build and sign arm64 release APK
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: "4"
+    steps:
+      - name: Verify signing secrets are configured
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_STORE_PASSWORD ANDROID_KEY_PASSWORD ANDROID_KEY_ALIAS; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Required secret '$name' is not set."
+              exit 1
+            fi
+          done
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.version.outputs.commit }}
+          submodules: recursive
+
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+
+      - name: Install NDK and CMake
+        run: |
+          set -euo pipefail
+          python3 --version
+          sdkmanager --install "ndk;30.0.16248370" "cmake;3.31.6" > /dev/null
+
+      - name: Assemble unsigned arm64 release APK
+        working-directory: android
+        run: ./gradlew --no-daemon --no-build-cache --max-workers=4 -Plomio.abis=arm64-v8a assembleRelease --no-configuration-cache
+
+      - name: Verify unsigned APK contents and 16 KB alignment
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -f "$APK"
+
+          ENTRIES="$(unzip -Z1 "$APK")"
+          if ! grep -qx 'lib/arm64-v8a/liblomio_jni.so' <<< "$ENTRIES"; then
+            echo "::error::Expected lib/arm64-v8a/liblomio_jni.so in APK."
+            exit 1
+          fi
+          if grep -q 'libOpenCL\.so$' <<< "$ENTRIES"; then
+            echo "::error::OpenCL stub libOpenCL.so must not be packaged in the APK."
+            exit 1
+          fi
+
+          BUILD_TOOLS_VER="$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
+          BUILD_TOOLS_DIR="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VER"
+          echo "Using build-tools: $BUILD_TOOLS_DIR"
+          "$BUILD_TOOLS_DIR/zipalign" -c -P 16 -v 4 "$APK"
+
+      - name: Sign APK and generate SHA256SUMS
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          KEYSTORE="$RUNNER_TEMP/release.jks"
+          BUILD_TOOLS_VER="$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
+          BUILD_TOOLS_DIR="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VER"
+
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+
+          mkdir -p dist
+          OUT="dist/lomio-${VERSION}-arm64-v8a.apk"
+          "$BUILD_TOOLS_DIR/apksigner" sign \
+            --ks "$KEYSTORE" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_STORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --out "$OUT" \
+            "$APK"
+
+          "$BUILD_TOOLS_DIR/apksigner" verify --verbose --print-certs "$OUT"
+
+          (
+            cd dist
+            sha256sum "lomio-${VERSION}-arm64-v8a.apk" > SHA256SUMS
+            cat SHA256SUMS
+          )
+
+      - name: Clean up keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dist
+          path: dist
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-mapping
+          path: android/app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-dist
+          path: dist
+
+      - name: Verify SHA256SUMS
+        working-directory: dist
+        run: sha256sum --check SHA256SUMS
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          args=(
+            "$TAG"
+            "dist/lomio-${VERSION}-arm64-v8a.apk"
+            "dist/SHA256SUMS"
+            --repo "$GITHUB_REPOSITORY"
+            --verify-tag
+            --generate-notes
+            --title "Lomio ${TAG}"
+          )
+          if [[ "$TAG" == *-* ]]; then
+            args+=(--prerelease --latest=false)
+          fi
+          gh release create "${args[@]}"
