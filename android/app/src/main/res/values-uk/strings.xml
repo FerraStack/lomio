@@ -137,7 +137,7 @@
     <string name="hf_gated">Потрібен доступ</string>
     <string name="hf_files_title">Доступні файли GGUF</string>
     <string name="hf_no_files">У цьому репозиторії немає файлів GGUF.</string>
-    <string name="hf_projector">Проєктор для зображень (поки не підтримується)</string>
+    <string name="hf_projector">Проєктор для зображень</string>
     <string name="hf_split">Бракує частин цієї розділеної моделі</string>
     <string name="hf_fits">Підходить</string>
     <string name="hf_tight">Впритул</string>
@@ -398,6 +398,8 @@
     <string name="api_key_local_off">Вимкнено: будь-який застосунок на цьому телефоні може користуватися сервером без ключа</string>
     <string name="api_no_key_note">Ключ не потрібен: сервером може користуватися будь-який застосунок на цьому телефоні.</string>
     <string name="gpu_crash_notice">Застосунок закрився під час завантаження моделі на GPU, тому прискорення на GPU вимкнено.</string>
+    <string name="gpu_fallback_notice">Прискорення на GPU не працює (%1$s). Модель запущено на CPU.</string>
+    <string name="err_attach_image">Не вдалося прикріпити зображення</string>
     <string name="storage_chat_caches">Кеш чатів</string>
     <string name="storage_chat_caches_sub">Дає змогу продовжувати довгі чати, не перечитуючи їх. Очищення лише сповільнить початок наступної відповіді в кожному чаті.</string>
     <string name="storage_cleared_chat_caches">Кеш чатів очищено: %1$s</string>

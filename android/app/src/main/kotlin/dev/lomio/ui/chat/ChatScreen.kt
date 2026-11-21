@@ -681,8 +681,9 @@ fun ModelPickerSheet(
         ) {
           Column(Modifier.weight(1f)) {
             Text(m.name, style = MaterialTheme.typography.bodyLarge)
+            val visionLabel = stringResource(R.string.vision_badge)
             Text(
-              listOfNotNull(m.quant, Format.bytes(m.sizeBytes), "Vision".takeIf { m.vision }).joinToString(" · "),
+              listOfNotNull(m.quant, Format.bytes(m.sizeBytes), visionLabel.takeIf { m.vision }).joinToString(" · "),
               style = MaterialTheme.typography.bodySmall,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

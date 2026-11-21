@@ -74,7 +74,7 @@ import dev.lomio.data.settings.ThemeMode
 import dev.lomio.domain.GenerationSettings
 import dev.lomio.domain.GpuSupport
 import dev.lomio.domain.LoadSettings
-import java.util.Locale
+import androidx.compose.ui.platform.LocalLocale
 import kotlin.math.roundToInt
 import androidx.compose.ui.res.stringResource
 import dev.lomio.R
@@ -166,7 +166,7 @@ fun SettingsScreen(
       LoadControls(settings.load) { l -> onChange { it.copy(load = l) } }
       GpuControls(settings, gpu, onChange)
 
-      Section("Data")
+      Section(stringResource(R.string.settings_data))
       Text(
         stringResource(R.string.settings_data_sub),
         style = MaterialTheme.typography.bodySmall,
@@ -356,7 +356,7 @@ fun SliderRow(
   Column(Modifier.padding(vertical = 4.dp)) {
     Row {
       Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-      Text(valueText?.invoke(value) ?: String.format(Locale.getDefault(), format, value), style = MaterialTheme.typography.bodyMedium)
+      Text(valueText?.invoke(value) ?: String.format(LocalLocale.current.platformLocale, format, value), style = MaterialTheme.typography.bodyMedium)
     }
     Slider(
       value = value.coerceIn(range),

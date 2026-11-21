@@ -148,23 +148,39 @@ class ModelRepository(
   suspend fun importLocal(uri: Uri): ModelEntity =
     withContext(Dispatchers.IO) {
       val resolver = context.contentResolver
-      var name = "model.gguf"
+      var rawName: String? = null
       var size = -1L
       resolver.query(uri, null, null, null, null)?.use { c ->
         if (c.moveToFirst()) {
-          c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let { name = c.getString(it) }
+          c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let { if (!c.isNull(it)) rawName = c.getString(it) }
           c.getColumnIndex(OpenableColumns.SIZE).takeIf { it >= 0 }?.let { if (!c.isNull(it)) size = c.getLong(it) }
         }
       }
+      val name = sanitizeImportName(rawName)
       if (!name.endsWith(".gguf", ignoreCase = true)) throw IOException("Not a .gguf file: $name")
       val dir = File(modelsDir, "local").apply { mkdirs() }
-      var dest = File(dir, name)
+      if (size > 0) {
+        val free = dir.usableSpace
+        val needed = size + DownloadWorker.STORAGE_MARGIN_BYTES
+        if (needed > free) throw InsufficientStorageException(needed, free)
+      }
+      val stem = name.dropLast(5).ifEmpty { "model" }
+      val ext = name.takeLast(5)
+      var dest = File(dir, "$stem$ext")
       var n = 1
-      while (dest.exists()) dest = File(dir, name.removeSuffix(".gguf") + " (${n++}).gguf")
+      while (dest.exists()) dest = File(dir, "$stem (${n++})$ext")
+      if (dest.canonicalFile.parentFile != dir.canonicalFile) {
+        throw IOException("Invalid file name: $name")
+      }
       val tmp = File(dest.path + ".part")
-      resolver.openInputStream(uri)?.use { input -> tmp.outputStream().use { input.copyTo(it, 1 shl 20) } }
-        ?: throw IOException("Cannot open $uri")
-      if (!tmp.renameTo(dest)) throw IOException("Cannot move imported file into place")
+      try {
+        resolver.openInputStream(uri)?.use { input -> tmp.outputStream().use { input.copyTo(it, 1 shl 20) } }
+          ?: throw IOException("Cannot open $uri")
+        if (!tmp.renameTo(dest)) throw IOException("Cannot move imported file into place")
+      } catch (t: Throwable) {
+        tmp.delete()
+        throw t
+      }
       val model =
         ModelEntity(
           id = UUID.randomUUID().toString(),
@@ -265,5 +281,21 @@ class ModelRepository(
           25 to "IQ4_NL", 26 to "IQ3_S", 27 to "IQ3_M", 28 to "IQ2_S", 29 to "IQ2_M",
           30 to "IQ4_XS", 31 to "IQ1_M", 32 to "BF16", 36 to "TQ1_0", 37 to "TQ2_0", 38 to "MXFP4",
         )[fileType]
+    /**
+     * Strips directory components, control chars and `..` from a SAF `DISPLAY_NAME` so imported
+     * files can never escape `models/local/`. Falls back to `model.gguf` when no usable name is
+     * left.
+     */
+    internal fun sanitizeImportName(raw: String?): String {
+      if (raw.isNullOrBlank()) return "model.gguf"
+      val noControl = buildString(raw.length) { for (ch in raw) if (ch >= ' ' && ch != '\u007F') append(ch) }
+      val base = noControl.substringAfterLast('/').substringAfterLast('\\').trim()
+      if (base.isEmpty() || base == "." || base == "..") return "model.gguf"
+      var safe = base
+      while (safe.contains("..")) safe = safe.replace("..", ".")
+      safe = safe.trimStart('.').trim()
+      if (safe.isEmpty() || safe.equals("gguf", ignoreCase = true)) return "model.gguf"
+      return safe
+    }
   }
 }

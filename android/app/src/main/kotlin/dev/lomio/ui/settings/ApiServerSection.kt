@@ -66,6 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.lomio.api.ApiServerStatus
 import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import dev.lomio.R
 
@@ -167,7 +168,7 @@ private fun StatusCard(state: ApiServerUiState) {
         Box(Modifier.weight(1f))
         if (state.status is ApiServerStatus.Running) {
           Text(
-            if (state.served == 1) "1 reply served" else "${state.served} replies served",
+            pluralStringResource(R.plurals.api_replies_served, state.served, state.served),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )

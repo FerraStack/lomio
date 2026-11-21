@@ -145,7 +145,13 @@ class ModelsViewModel(private val c: AppContainer) : ViewModel() {
       message.value = c.text.getString(R.string.models_importing)
       message.value =
         runCatching { c.models.importLocal(uri) }
-          .fold({ c.text.getString(R.string.models_imported_msg, it.displayName) }, { c.text.getString(R.string.models_import_failed, it.message.orEmpty()) })
+          .fold(
+            { c.text.getString(R.string.models_imported_msg, it.displayName) },
+            { e ->
+              if (e is InsufficientStorageException) c.text.getString(R.string.err_no_space, Format.bytes(e.needed), Format.bytes(e.free))
+              else c.text.getString(R.string.models_import_failed, e.message.orEmpty())
+            },
+          )
     }
 
   fun messageShown() {

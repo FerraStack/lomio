@@ -71,7 +71,17 @@ class ApiServerController(
   }
 
   fun startService() {
-    ContextCompat.startForegroundService(context, Intent(context, ApiServerService::class.java))
+    try {
+      ContextCompat.startForegroundService(context, Intent(context, ApiServerService::class.java))
+    } catch (e: IllegalStateException) {
+      // Covers ForegroundServiceStartNotAllowedException (Android 12+, subclass of IllegalStateException)
+      // when a background coroutine race tries to start the foreground service.
+      _status.value =
+        ApiServerStatus.Failed(context.getString(R.string.api_couldnt_start, e.message ?: e.javaClass.simpleName))
+    } catch (e: SecurityException) {
+      _status.value =
+        ApiServerStatus.Failed(context.getString(R.string.api_couldnt_start, e.message ?: e.javaClass.simpleName))
+    }
   }
 
   private fun stopService() {
